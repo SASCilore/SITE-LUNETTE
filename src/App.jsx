@@ -694,23 +694,13 @@ function SiteHeader({ page, setPage, cartCount, onOpenCart, onGoAdmin, mobileOpe
 
 /* ---------------------------------- PUBLIC: HERO ---------------------------------- */
 
-function Hero({ setPage, products, brands, onOpenProduct }) {
+function Hero({ setPage, featured, brands, onOpenProduct }) {
   const { p, dark } = useTheme();
   const sectionRef = useRef(null);
   const [spot, setSpot] = useState({ x: 50, y: 40, active: false });
   const blend = dark ? "screen" : "multiply";
   const boost = dark ? 1 : 1.7;
   const tilt = useTilt(7);
-
-  // Picked once per mount (i.e. once per visit to the home page / page refresh), not on every
-  // re-render — otherwise unrelated state changes elsewhere (theme toggle, cart) would swap the
-  // featured product mid-session, which would feel like a bug rather than a nice surprise.
-  const featuredRef = useRef(undefined);
-  if (featuredRef.current === undefined && products && products.length > 0) {
-    const withPhotos = products.filter((pr) => pr.photos && pr.photos.length > 0);
-    featuredRef.current = withPhotos.length ? withPhotos[Math.floor(Math.random() * withPhotos.length)] : null;
-  }
-  const featured = featuredRef.current || null;
   const featuredBrand = featured ? brands.find((b) => b.id === featured.brandId) : null;
 
   const onMove = (e) => {
@@ -785,7 +775,7 @@ function Hero({ setPage, products, brands, onOpenProduct }) {
 
 /* ---------------------------------- PUBLIC: LENS-SWEEP BRAND REVEAL ---------------------------------- */
 
-function ScrollGlassesStory() {
+function ScrollGlassesStory({ featured }) {
   const { p } = useTheme();
   const sectionRef = useRef(null);
   const progress = useScrollProgress(sectionRef);
@@ -795,7 +785,8 @@ function ScrollGlassesStory() {
   const drift = Math.max(0, progress - 0.34) * -46;
 
   const translateY = (1 - enter) * -230 + drift;
-  const rotate = (1 - enter) * -20;
+  const rotY = (1 - enter) * -28 + Math.sin(progress * Math.PI * 1.4) * 7;
+  const rotX = (1 - enter) * -10 + Math.sin(progress * Math.PI) * 3;
   const scale = 0.68 + 0.32 * enter;
 
   const stepOpacity = (inS, inE, outS, outE) => Math.min(smoothstep(inS, inE, progress), 1 - smoothstep(outS, outE, progress));
@@ -823,15 +814,30 @@ function ScrollGlassesStory() {
         <StepCard n={2} title="Regardez à travers" text="Chaque référence est vérifiée, chaque provenance tracée jusqu'au fournisseur agréé." style={{ right: "7%", top: "26%" }} opacity={s2} />
         <StepCard n={3} title="Elle arrive chez vous" text="Expédiée directement par nos partenaires, suivie de bout en bout jusqu'à votre porte." style={{ left: "50%", bottom: "10%", transform: `translate(-50%, ${(1 - s3) * 18}px)` }} opacity={s3} />
 
-        <div
-          style={{
-            width: "min(70vw, 460px)",
-            transform: `translateY(${translateY}px) scale(${scale})`,
-            filter: `drop-shadow(0 0 ${14 + glow * 34}px rgba(0,240,255,${0.2 + glow * 0.35})) drop-shadow(0 0 ${8 + glow * 18}px rgba(255,46,136,${0.12 + glow * 0.25}))`,
-          }}
-        >
-          <Glasses3D tint={NEON.cyan} mode="scroll" progress={progress} height={220} />
-        </div>
+        {featured ? (
+          <div
+            style={{
+              width: "min(70vw, 460px)",
+              height: 260,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              transform: `perspective(1100px) translateY(${translateY}px) scale(${scale}) rotateX(${rotX}deg) rotateY(${rotY}deg)`,
+              transformStyle: "preserve-3d",
+              filter: `drop-shadow(0 0 ${14 + glow * 34}px rgba(0,240,255,${0.2 + glow * 0.35})) drop-shadow(0 0 ${8 + glow * 18}px rgba(255,46,136,${0.12 + glow * 0.25}))`,
+            }}
+          >
+            <img src={featured.photos[0]} alt={featured.name} className="max-w-full max-h-full object-contain" />
+          </div>
+        ) : (
+          <div
+            style={{
+              width: "min(70vw, 460px)",
+              transform: `translateY(${translateY}px) scale(${scale})`,
+              filter: `drop-shadow(0 0 ${14 + glow * 34}px rgba(0,240,255,${0.2 + glow * 0.35})) drop-shadow(0 0 ${8 + glow * 18}px rgba(255,46,136,${0.12 + glow * 0.25}))`,
+            }}
+          >
+            <Glasses3D tint={NEON.cyan} mode="scroll" progress={progress} height={220} />
+          </div>
+        )}
 
         <div className="absolute right-5 md:right-8 top-1/2 -translate-y-1/2 w-1 h-40 rounded-full overflow-hidden" style={{ background: alpha(p.text, 0.1) }}>
           <div style={{ height: `${progress * 100}%`, width: "100%", background: `linear-gradient(180deg, ${NEON.cyan}, ${NEON.pink})`, transition: "height .05s linear" }} />
@@ -2646,6 +2652,17 @@ function Root() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [activeProduct, setActiveProduct] = useState(null);
 
+  // Picked once products are loaded (i.e. once per visit / page refresh), not recomputed on every
+  // re-render — otherwise unrelated state changes elsewhere (theme toggle, cart) would swap the
+  // featured product mid-session, which would feel like a bug rather than a nice surprise. Shared
+  // by Hero and ScrollGlassesStory so the homepage tells a consistent story around one product.
+  const featuredRef = useRef(undefined);
+  if (featuredRef.current === undefined && products.length > 0) {
+    const withPhotos = products.filter((pr) => pr.photos && pr.photos.length > 0);
+    featuredRef.current = withPhotos.length ? withPhotos[Math.floor(Math.random() * withPhotos.length)] : null;
+  }
+  const featuredProduct = featuredRef.current || null;
+
   // Initial data load from Supabase.
   useEffect(() => {
     let cancelled = false;
@@ -2737,8 +2754,8 @@ function Root() {
 
       {page === "home" && (
         <>
-          <Hero setPage={setPage} products={products} brands={brands} onOpenProduct={setActiveProduct} />
-          <ScrollGlassesStory />
+          <Hero setPage={setPage} featured={featuredProduct} brands={brands} onOpenProduct={setActiveProduct} />
+          <ScrollGlassesStory featured={featuredProduct} />
           <LensRevealBrands brands={brands} setPage={setPage} />
           <FeaturedGrid products={products} brands={brands} onOpen={setActiveProduct} />
           <TrustBand />
