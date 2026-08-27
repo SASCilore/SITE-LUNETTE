@@ -4,8 +4,6 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  // Fails loudly at build/runtime rather than silently returning empty data everywhere —
-  // easier to diagnose than a blank catalog with no error.
   console.error(
     "Variables d'environnement Supabase manquantes. Copiez .env.example vers .env et renseignez " +
       "VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY (Project Settings > API dans Supabase)."
@@ -26,13 +24,15 @@ const rowToProduct = (r) => ({
   id: r.id, name: r.name, brandId: r.brand_id, category: r.category, gender: r.gender,
   price: Number(r.price), cost: Number(r.cost || 0), colorName: r.color_name || "", colorHex: r.color_hex || "#00F0FF",
   shape: r.shape || "square", calibre: r.calibre || "", material: r.material || "", stock: r.stock || "En stock",
-  supplierId: r.supplier_id, featured: !!r.featured, description: r.description || "", photo: r.photo_url || "",
+  supplierId: r.supplier_id, featured: !!r.featured, description: r.description || "",
+  photos: (r.photo_urls && r.photo_urls.length ? r.photo_urls : (r.photo_url ? [r.photo_url] : [])),
 });
 const productToRow = (p) => ({
   id: p.id, name: p.name, brand_id: p.brandId, category: p.category, gender: p.gender,
   price: p.price, cost: p.cost, color_name: p.colorName, color_hex: p.colorHex, shape: p.shape,
   calibre: p.calibre, material: p.material, stock: p.stock, supplier_id: p.supplierId,
-  featured: p.featured, description: p.description, photo_url: p.photo,
+  featured: p.featured, description: p.description,
+  photo_urls: p.photos || [], photo_url: (p.photos && p.photos[0]) || "",
 });
 
 const rowToOrder = (r) => ({ id: r.id, client: r.client, email: r.email, date: r.order_date, items: r.items || [], status: r.status });
@@ -129,10 +129,6 @@ export async function dbDeleteProduct(id) {
 /* ---------------------------------- ORDERS ---------------------------------- */
 
 export async function dbCreateOrder(order) {
-  // No .select() here on purpose: orders can be inserted by anonymous visitors (checkout),
-  // but the read policy is admin-only — chaining .select() after insert would try to read the
-  // row back under the same anon session and fail against RLS. The order object is already
-  // fully formed client-side (id included), so we just return it as-is on success.
   const { error } = await supabase.from("orders").insert(orderToRow(order));
   if (error) throw error;
   return order;
