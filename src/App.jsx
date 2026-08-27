@@ -2124,11 +2124,34 @@ function AdminProducts({ products, setProducts, brands, setBrands, suppliers, se
   const [search, setSearch] = useState("");
   const [importOpen, setImportOpen] = useState(false);
   const [error, setError] = useState("");
+  const [selected, setSelected] = useState(() => new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const filtered = products.filter((pr) => {
     const brand = brands.find((b) => b.id === pr.brandId)?.name || "";
     return `${pr.name} ${brand}`.toLowerCase().includes(search.toLowerCase());
   });
+
+  const allFilteredSelected = filtered.length > 0 && filtered.every((pr) => selected.has(pr.id));
+  const toggleAll = () => {
+    setSelected((prev) => {
+      if (allFilteredSelected) {
+        const next = new Set(prev);
+        filtered.forEach((pr) => next.delete(pr.id));
+        return next;
+      }
+      const next = new Set(prev);
+      filtered.forEach((pr) => next.add(pr.id));
+      return next;
+    });
+  };
+  const toggleOne = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   const save = async (form) => {
     setError("");
@@ -2150,8 +2173,25 @@ function AdminProducts({ products, setProducts, brands, setBrands, suppliers, se
     try {
       await dbDeleteProduct(id);
       setProducts((ps) => ps.filter((pr) => pr.id !== id));
+      setSelected((prev) => { const next = new Set(prev); next.delete(id); return next; });
     } catch (err) {
       setError(err.message || "Échec de la suppression.");
+    }
+  };
+  const removeSelected = async () => {
+    if (selected.size === 0) return;
+    if (!window.confirm(`Supprimer définitivement ${selected.size} produit${selected.size > 1 ? "s" : ""} ?`)) return;
+    setError(""); setBulkDeleting(true);
+    const ids = Array.from(selected);
+    try {
+      const results = await Promise.allSettled(ids.map((id) => dbDeleteProduct(id)));
+      const succeededIds = ids.filter((_, i) => results[i].status === "fulfilled");
+      const failedCount = ids.length - succeededIds.length;
+      setProducts((ps) => ps.filter((pr) => !succeededIds.includes(pr.id)));
+      setSelected(new Set());
+      if (failedCount > 0) setError(`${failedCount} produit${failedCount > 1 ? "s n'ont" : " n'a"} pas pu être supprimé${failedCount > 1 ? "s" : ""}.`);
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -2185,16 +2225,27 @@ function AdminProducts({ products, setProducts, brands, setBrands, suppliers, se
         }
       />
       {error && <p className="text-sm mb-4" style={{ color: NEG }}>{error}</p>}
-      <div className="mb-5 flex items-center gap-2 rounded-full px-4 py-2.5 max-w-sm" style={{ background: p.bg2, border: `1px solid ${p.border}` }}>
-        <Search size={15} style={{ color: p.steel }} />
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher…" className="flex-1 outline-none text-sm bg-transparent" style={{ color: p.text }} />
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 rounded-full px-4 py-2.5 max-w-sm flex-1" style={{ background: p.bg2, border: `1px solid ${p.border}` }}>
+          <Search size={15} style={{ color: p.steel }} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher…" className="flex-1 outline-none text-sm bg-transparent" style={{ color: p.text }} />
+        </div>
+        {selected.size > 0 && (
+          <button onClick={removeSelected} disabled={bulkDeleting} className="btn-magnet flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold disabled:opacity-50" style={{ background: alpha(NEG, 0.14), color: NEG, border: `1px solid ${alpha(NEG, 0.35)}` }}>
+            {bulkDeleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+            Supprimer la sélection ({selected.size})
+          </button>
+        )}
       </div>
 
       <div className="rounded-2xl overflow-hidden" style={{ background: p.bg2, border: `1px solid ${p.border}` }}>
         <div className="overflow-x-auto scroll-thin">
-          <table className="w-full text-sm min-w-[880px]">
+          <table className="w-full text-sm min-w-[920px]">
             <thead>
               <tr className="text-left" style={{ background: p.bg3 }}>
+                <th className="px-4 py-3">
+                  <input type="checkbox" checked={allFilteredSelected} onChange={toggleAll} style={{ accentColor: PRIMARY }} />
+                </th>
                 {["", "Produit", "Catégorie", "Prix", "Coût", "Marge", "Fournisseur", "Stock", ""].map((h) => (
                   <th key={h} className="px-4 py-3 mtr-mono text-[11px] uppercase tracking-wide" style={{ color: p.steel }}>{h}</th>
                 ))}
@@ -2206,7 +2257,10 @@ function AdminProducts({ products, setProducts, brands, setBrands, suppliers, se
                 const supplier = suppliers.find((s) => s.id === pr.supplierId);
                 const margin = Math.round(((pr.price - pr.cost) / pr.price) * 100);
                 return (
-                  <tr key={pr.id} className="border-t" style={{ borderColor: p.border }}>
+                  <tr key={pr.id} className="border-t" style={{ borderColor: p.border, background: selected.has(pr.id) ? alpha(PRIMARY, 0.05) : "transparent" }}>
+                    <td className="px-4 py-3">
+                      <input type="checkbox" checked={selected.has(pr.id)} onChange={() => toggleOne(pr.id)} style={{ accentColor: PRIMARY }} />
+                    </td>
                     <td className="px-4 py-3">
                       <div className="w-11 h-9 rounded-md overflow-hidden flex items-center justify-center" style={{ background: p.bg3 }}>
                         <ProductVisual product={pr} stroke={alpha(p.text, 0.5)} />
