@@ -1701,7 +1701,11 @@ const IMPORT_FIELD_DEFS = [
   { id: "shape", label: "Forme", aliases: ["forme", "shape"], required: false },
   { id: "stock", label: "Stock", aliases: ["stock", "disponibilite", "disponibilité", "statut"], required: false },
   { id: "supplierName", label: "Fournisseur", aliases: ["fournisseur", "supplier"], required: false },
-  { id: "photo", label: "Photo(s) — URLs séparées par une virgule", aliases: ["photo", "photos", "image", "photo url", "image url"], required: false },
+  { id: "photo1", label: "Photo 1 (URL)", aliases: ["photo", "photo 1", "photo1", "image", "image 1", "image1", "photo url"], required: false },
+  { id: "photo2", label: "Photo 2 (URL)", aliases: ["photo 2", "photo2", "image 2", "image2"], required: false },
+  { id: "photo3", label: "Photo 3 (URL)", aliases: ["photo 3", "photo3", "image 3", "image3"], required: false },
+  { id: "photo4", label: "Photo 4 (URL)", aliases: ["photo 4", "photo4", "image 4", "image4"], required: false },
+  { id: "photo5", label: "Photo 5 (URL)", aliases: ["photo 5", "photo5", "image 5", "image5"], required: false },
   { id: "description", label: "Description", aliases: ["description", "desc"], required: false },
 ];
 
@@ -1794,7 +1798,13 @@ function buildImportRawRow(row, mapping, rowIndex) {
     cost,
     colorName: get("colorName") || "Standard",
     colorHex, calibre: get("calibre"), material: get("material"), shape, stock,
-    supplierNameRaw, photos: get("photo").split(/[,;|]/).map((s) => s.trim()).filter(Boolean), description: get("description"),
+    supplierNameRaw,
+    photos: ["photo1", "photo2", "photo3", "photo4", "photo5"]
+      .map((f) => get(f))
+      .flatMap((v) => v.split(/[,;|]/))
+      .map((s) => s.trim())
+      .filter(Boolean),
+    description: get("description"),
     messages, status: blocking ? "error" : (messages.length ? "warning" : "ok"),
   };
 }
