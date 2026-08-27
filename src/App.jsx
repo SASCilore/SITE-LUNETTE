@@ -282,10 +282,11 @@ function GlassesGlyph({ shape = "square", tint = NEON.cyan, stroke = "rgba(154,1
 // Shows the real product photo when one has been uploaded/imported; falls back to the illustrated
 // glyph otherwise (e.g. freshly imported rows with no photo yet, or the demo brands).
 function ProductVisual({ product, holo = false, stroke, className = "" }) {
-  if (product?.photo) {
+  const cover = product?.photos && product.photos.length > 0 ? product.photos[0] : null;
+  if (cover) {
     return (
       <img
-        src={product.photo}
+        src={cover}
         alt={product.name || ""}
         className={`w-full h-full object-contain ${className}`}
         onError={(e) => { e.currentTarget.style.display = "none"; }}
@@ -293,6 +294,41 @@ function ProductVisual({ product, holo = false, stroke, className = "" }) {
     );
   }
   return <GlassesGlyph shape={product?.shape} tint={product?.colorHex} stroke={stroke} holo={holo} />;
+}
+
+// Full gallery for the product detail modal: main image + thumbnail strip. Falls back to the
+// illustrated glyph when the product has no photos at all.
+function ProductGallery({ product, holo = false, stroke }) {
+  const { p } = useTheme();
+  const photos = product?.photos || [];
+  const [active, setActive] = useState(0);
+  useEffect(() => setActive(0), [product?.id]);
+
+  if (photos.length === 0) {
+    return <GlassesGlyph shape={product?.shape} tint={product?.colorHex} stroke={stroke} holo={holo} />;
+  }
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="flex-1 min-h-0 flex items-center justify-center">
+        <img src={photos[active]} alt={product.name || ""} className="max-w-full max-h-full object-contain" />
+      </div>
+      {photos.length > 1 && (
+        <div className="flex gap-2 mt-4 overflow-x-auto scroll-thin pb-1">
+          {photos.map((url, i) => (
+            <button
+              key={i}
+              onClick={() => setActive(i)}
+              className="w-14 h-14 rounded-lg overflow-hidden shrink-0"
+              style={{ border: `2px solid ${i === active ? PRIMARY : "transparent"}`, opacity: i === active ? 1 : 0.6 }}
+            >
+              <img src={url} alt="" className="w-full h-full object-cover" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 
@@ -1191,7 +1227,7 @@ function ProductModal({ product, brand, onClose, onAddToCart }) {
         <div className="grid md:grid-cols-2">
           <div className="p-10 relative overflow-hidden" style={{ background: p.bg3 }}>
             <div className="mesh-bg"><div className="mesh-blob" style={{ width: 260, height: 260, top: -60, left: -40, background: product.colorHex, opacity: 0.3 }} /></div>
-            <div className="relative"><ProductVisual product={product} stroke={alpha(p.text, 0.55)} holo /></div>
+            <div className="relative h-full min-h-[260px]"><ProductGallery product={product} stroke={alpha(p.text, 0.55)} holo /></div>
           </div>
           <div className="p-8">
             <div className="mtr-mono text-xs uppercase tracking-[0.14em]" style={{ color: accent }}>{brand?.name}</div>
@@ -1500,23 +1536,38 @@ function AdminDashboard({ products, orders, brands }) {
 
 function ProductFormModal({ open, onClose, onSave, brands, suppliers, initial }) {
   const { p } = useTheme();
-  const empty = { name: "", brandId: brands[0]?.id || "", category: "Solaire", gender: "Mixte", price: "", cost: "", colorName: "", colorHex: NEON.cyan, shape: "square", calibre: "", material: "", stock: "En stock", supplierId: suppliers[0]?.id || "", featured: false, description: "", photo: "" };
+  const empty = { name: "", brandId: brands[0]?.id || "", category: "Solaire", gender: "Mixte", price: "", cost: "", colorName: "", colorHex: NEON.cyan, shape: "square", calibre: "", material: "", stock: "En stock", supplierId: suppliers[0]?.id || "", featured: false, description: "", photos: [] };
   const [form, setForm] = useState(initial || empty);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
-  useEffect(() => { setForm(initial || empty); setUploadError(""); }, [initial, open]);
+  const [urlDraft, setUrlDraft] = useState("");
+  useEffect(() => { setForm(initial || empty); setUploadError(""); setUrlDraft(""); }, [initial, open]);
   if (!open) return null;
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const margin = form.price && form.cost ? Math.round(((form.price - form.cost) / form.price) * 100) : null;
 
-  const handlePhotoFile = async (file) => {
-    if (!file) return;
+  const addPhotoUrl = () => {
+    const url = urlDraft.trim();
+    if (!url) return;
+    setForm((f) => ({ ...f, photos: [...(f.photos || []), url] }));
+    setUrlDraft("");
+  };
+  const removePhoto = (i) => setForm((f) => ({ ...f, photos: f.photos.filter((_, idx) => idx !== i) }));
+  const makeCover = (i) => setForm((f) => {
+    const next = [...f.photos];
+    const [chosen] = next.splice(i, 1);
+    return { ...f, photos: [chosen, ...next] };
+  });
+  const handlePhotoFiles = async (fileList) => {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
     setUploading(true); setUploadError("");
     try {
-      const url = await uploadProductPhoto(file, initial?.id);
-      set("photo", url);
+      const urls = [];
+      for (const file of files) urls.push(await uploadProductPhoto(file, initial?.id));
+      setForm((f) => ({ ...f, photos: [...(f.photos || []), ...urls] }));
     } catch (err) {
-      setUploadError(err.message || "Échec de l'envoi de la photo.");
+      setUploadError(err.message || "Échec de l'envoi d'une photo.");
     } finally {
       setUploading(false);
     }
@@ -1564,34 +1615,62 @@ function ProductFormModal({ open, onClose, onSave, brands, suppliers, initial })
           <label className="text-xs mtr-mono uppercase tracking-wide block mb-1.5" style={{ color: p.steel }}>Description</label>
           <textarea rows={2} className={inputCls} style={inputStyle} value={form.description} onChange={(e) => set("description", e.target.value)} placeholder="Courte description pour la fiche produit…" />
         </div>
+
         <div className="mt-4">
-          <label className="text-xs mtr-mono uppercase tracking-wide block mb-1.5" style={{ color: p.steel }}>Photo produit</label>
-          <div className="flex items-center gap-4">
-            <div className="w-20 h-16 rounded-lg overflow-hidden shrink-0 flex items-center justify-center" style={{ background: p.bg3, border: `1px solid ${p.border}` }}>
-              {uploading ? (
-                <Loader2 size={18} className="animate-spin" style={{ color: p.steel }} />
-              ) : form.photo ? (
-                <img src={form.photo} alt="" className="w-full h-full object-contain" />
-              ) : (
-                <ImageIcon size={18} style={{ color: p.steel }} />
+          <label className="text-xs mtr-mono uppercase tracking-wide block mb-1.5" style={{ color: p.steel }}>
+            Photos produit {form.photos?.length > 0 && `(${form.photos.length})`}
+          </label>
+
+          {form.photos?.length > 0 && (
+            <div className="flex flex-wrap gap-3 mb-3">
+              {form.photos.map((url, i) => (
+                <div key={i} className="relative w-20 h-16 rounded-lg overflow-hidden group" style={{ border: `2px solid ${i === 0 ? PRIMARY : p.border}` }}>
+                  <img src={url} alt="" className="w-full h-full object-cover" />
+                  {i === 0 && <span className="absolute bottom-0 left-0 right-0 text-[9px] text-center font-semibold py-0.5" style={{ background: alpha(PRIMARY, 0.85), color: "#07080A" }}>Couverture</span>}
+                  <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1" style={{ background: "rgba(0,0,0,0.55)" }}>
+                    {i !== 0 && (
+                      <button type="button" onClick={() => makeCover(i)} title="Définir comme couverture" className="p-1 rounded" style={{ background: "rgba(255,255,255,0.15)" }}>
+                        <Sparkles size={12} color="#fff" />
+                      </button>
+                    )}
+                    <button type="button" onClick={() => removePhoto(i)} title="Retirer" className="p-1 rounded" style={{ background: "rgba(255,255,255,0.15)" }}>
+                      <X size={12} color="#fff" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {uploading && (
+                <div className="w-20 h-16 rounded-lg flex items-center justify-center" style={{ background: p.bg3, border: `1px solid ${p.border}` }}>
+                  <Loader2 size={16} className="animate-spin" style={{ color: p.steel }} />
+                </div>
               )}
             </div>
-            <div className="flex-1 space-y-2">
-              <input
-                className={inputCls}
-                style={inputStyle}
-                value={form.photo}
-                onChange={(e) => set("photo", e.target.value)}
-                placeholder="URL de la photo, ou envoyez un fichier ci-dessous"
-              />
-              <label className="inline-flex items-center gap-1.5 text-xs font-medium cursor-pointer" style={{ color: PRIMARY }}>
-                <Upload size={13} /> Envoyer une photo
-                <input type="file" accept="image/*" className="hidden" onChange={(e) => handlePhotoFile(e.target.files?.[0])} />
-              </label>
+          )}
+          {(!form.photos || form.photos.length === 0) && (
+            <div className="w-20 h-16 rounded-lg mb-3 flex items-center justify-center" style={{ background: p.bg3, border: `1px solid ${p.border}` }}>
+              {uploading ? <Loader2 size={18} className="animate-spin" style={{ color: p.steel }} /> : <ImageIcon size={18} style={{ color: p.steel }} />}
             </div>
+          )}
+
+          <div className="flex gap-2">
+            <input
+              className={inputCls}
+              style={inputStyle}
+              value={urlDraft}
+              onChange={(e) => setUrlDraft(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addPhotoUrl())}
+              placeholder="Coller une URL d'image et valider…"
+            />
+            <button type="button" onClick={addPhotoUrl} className="px-4 rounded-lg text-sm font-medium shrink-0" style={{ border: `1px solid ${p.borderStrong}`, color: p.text }}>Ajouter</button>
           </div>
+          <label className="inline-flex items-center gap-1.5 text-xs font-medium cursor-pointer mt-2" style={{ color: PRIMARY }}>
+            <Upload size={13} /> Envoyer une ou plusieurs photos
+            <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handlePhotoFiles(e.target.files)} />
+          </label>
           {uploadError && <p className="text-xs mt-1.5" style={{ color: NEG }}>{uploadError}</p>}
+          <p className="text-[11px] mt-1.5" style={{ color: p.steel }}>La première photo (bordure colorée) sert de couverture sur le catalogue.</p>
         </div>
+
         {margin !== null && (
           <div className="mt-4 text-sm" style={{ color: p.steel }}>
             Marge estimée : <strong style={{ color: margin > 30 ? NEON.lime : NEG }}>{margin}%</strong> ({euro(form.price - form.cost)})
@@ -1622,7 +1701,7 @@ const IMPORT_FIELD_DEFS = [
   { id: "shape", label: "Forme", aliases: ["forme", "shape"], required: false },
   { id: "stock", label: "Stock", aliases: ["stock", "disponibilite", "disponibilité", "statut"], required: false },
   { id: "supplierName", label: "Fournisseur", aliases: ["fournisseur", "supplier"], required: false },
-  { id: "photo", label: "Photo (URL)", aliases: ["photo", "image", "photo url", "image url"], required: false },
+  { id: "photo", label: "Photo(s) — URLs séparées par une virgule", aliases: ["photo", "photos", "image", "photo url", "image url"], required: false },
   { id: "description", label: "Description", aliases: ["description", "desc"], required: false },
 ];
 
@@ -1715,7 +1794,7 @@ function buildImportRawRow(row, mapping, rowIndex) {
     cost,
     colorName: get("colorName") || "Standard",
     colorHex, calibre: get("calibre"), material: get("material"), shape, stock,
-    supplierNameRaw, photo: get("photo"), description: get("description"),
+    supplierNameRaw, photos: get("photo").split(/[,;|]/).map((s) => s.trim()).filter(Boolean), description: get("description"),
     messages, status: blocking ? "error" : (messages.length ? "warning" : "ok"),
   };
 }
@@ -1856,7 +1935,7 @@ function ImportWizard({ open, onClose, brands, suppliers, onImport }) {
       name: r.name, brandId: r.brandId, category: r.category, gender: r.gender,
       price: r.price, cost: r.cost, colorName: r.colorName, colorHex: r.colorHex,
       shape: r.shape, calibre: r.calibre, material: r.material, stock: r.stock,
-      supplierId: r.supplierId, featured: false, description: r.description, photo: r.photo,
+      supplierId: r.supplierId, featured: false, description: r.description, photos: r.photos,
     }));
     setImportPending(true); setImportError("");
     try {
