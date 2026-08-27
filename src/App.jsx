@@ -203,6 +203,14 @@ function GlobalStyle() {
       .glint { position:absolute; border-radius:9999px; animation: glintFloat 6.5s ease-in-out infinite; }
       @keyframes glintFloat { 0%,100% { transform: translateY(0) scale(1); opacity:.55; } 50% { transform: translateY(-18px) scale(1.25); opacity:1; } }
 
+      .announce-text {
+        background-image: linear-gradient(90deg, ${NEON.cyan}, ${NEON.pink} 33%, ${NEON.lime} 66%, ${NEON.cyan});
+        background-size: 200% 100%;
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+        animation: announceSweep 5s linear infinite;
+      }
+      @keyframes announceSweep { from { background-position: 0% 0; } to { background-position: 200% 0; } }
+
       .btn-magnet { transition: transform .25s cubic-bezier(.2,.8,.2,1), box-shadow .25s ease; }
       .btn-magnet:hover { transform: translateY(-2px) scale(1.02); }
 
@@ -608,6 +616,25 @@ function Pill({ children, style, className = "" }) {
   return <span className={`mtr-mono text-[10px] uppercase tracking-wide px-2 py-1 rounded-full ${className}`} style={style}>{children}</span>;
 }
 
+// Displays the selling price, and — only when a genuine reference price is set on the product
+// (never fabricated) — a struck-through original price and a "-X%" badge next to it.
+function PriceTag({ price, compareAt, className = "font-bold", color }) {
+  const { p } = useTheme();
+  const hasDiscount = compareAt && compareAt > price;
+  const pct = hasDiscount ? Math.round((1 - price / compareAt) * 100) : 0;
+  return (
+    <span className="inline-flex items-baseline gap-2 flex-wrap">
+      <span className={className} style={{ color: color || (hasDiscount ? NEON.pink : p.text) }}>{euro(price)}</span>
+      {hasDiscount && (
+        <>
+          <span className="text-sm line-through" style={{ color: p.steel }}>{euro(compareAt)}</span>
+          <span className="mtr-mono text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: alpha(NEON.pink, 0.18), color: NEON.pink, boxShadow: `0 0 8px ${alpha(NEON.pink, 0.4)}` }}>-{pct}%</span>
+        </>
+      )}
+    </span>
+  );
+}
+
 function NeonButton({ children, onClick, disabled, className = "", c1 = NEON.cyan, c2 = NEON.pink }) {
   return (
     <button onClick={onClick} disabled={disabled} className={`btn-neon btn-magnet font-semibold text-sm disabled:opacity-40 disabled:animate-none ${className}`} style={{ "--c1": c1, "--c2": c2, "--glow": alpha(c1, 0.55) }}>
@@ -638,7 +665,21 @@ function SectionGlow({ variant = "default" }) {
 
 /* ---------------------------------- PUBLIC: HEADER ---------------------------------- */
 
-function SiteHeader({ page, setPage, cartCount, onOpenCart, onGoAdmin, mobileOpen, setMobileOpen }) {
+function AnnounceBar() {
+  return (
+    <div className="relative overflow-hidden py-2.5 text-center" style={{ background: "#07080A" }}>
+      <div className="mesh-bg">
+        <div className="mesh-blob" style={{ width: 260, height: 260, top: -110, left: "8%", background: NEON.cyan, opacity: 0.22, mixBlendMode: "screen" }} />
+        <div className="mesh-blob" style={{ width: 260, height: 260, top: -110, right: "8%", background: NEON.pink, opacity: 0.2, mixBlendMode: "screen", animationDelay: "-8s" }} />
+      </div>
+      <p className="relative mtr-mono announce-text text-[11px] md:text-xs font-bold uppercase tracking-[0.16em] px-4">
+        ⚡ Prix imbattables sur toute la sélection · Livraison suivie · Retours 30 jours ⚡
+      </p>
+    </div>
+  );
+}
+
+function SiteHeader({ page, setPage, onGoCategory, cartCount, onOpenCart, onGoAdmin, mobileOpen, setMobileOpen }) {
   const { p } = useTheme();
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
@@ -648,40 +689,57 @@ function SiteHeader({ page, setPage, cartCount, onOpenCart, onGoAdmin, mobileOpe
   }, []);
 
   const NavLink = ({ target, children }) => (
-    <button onClick={() => { setPage(target); setMobileOpen(false); window.scrollTo({ top: 0 }); }} className="relative text-sm tracking-wide transition-colors py-1" style={{ color: page === target ? p.text : alpha(p.text, 0.5) }}>
+    <button onClick={() => { setPage(target); setMobileOpen(false); window.scrollTo({ top: 0 }); }} className="relative text-sm tracking-wide transition-colors py-1 whitespace-nowrap" style={{ color: page === target ? p.text : alpha(p.text, 0.5) }}>
       {children}
       {page === target && <span className="absolute -bottom-1 left-0 right-0 h-px" style={{ background: PRIMARY, boxShadow: `0 0 6px ${PRIMARY}` }} />}
     </button>
   );
 
+  const CategoryLink = ({ category, gender, children }) => (
+    <button onClick={() => { onGoCategory(category, gender); setMobileOpen(false); }} className="text-sm tracking-wide transition-colors whitespace-nowrap" style={{ color: alpha(p.text, 0.55) }}>
+      {children}
+    </button>
+  );
+
+  const categories = [
+    { category: "Solaire", gender: "Femme", label: "Solaire Femme" },
+    { category: "Optique", gender: "Femme", label: "Vue Femme" },
+    { category: "Solaire", gender: "Homme", label: "Solaire Homme" },
+    { category: "Optique", gender: "Homme", label: "Vue Homme" },
+  ];
+
   return (
     <header className="sticky top-0 z-40 transition-all duration-300" style={{ background: scrolled ? alpha(p.bg, 0.75) : "transparent", backdropFilter: scrolled ? "blur(14px)" : "none", WebkitBackdropFilter: scrolled ? "blur(14px)" : "none", borderBottom: scrolled ? `1px solid ${p.border}` : "1px solid transparent" }}>
       <div className="max-w-6xl mx-auto px-5 md:px-8 h-16 flex items-center justify-between">
-        <button onClick={() => { setPage("home"); window.scrollTo({ top: 0 }); }} className="mtr-display text-xl font-extrabold tracking-tight" style={{ color: p.text }}>
+        <button onClick={() => { setPage("home"); window.scrollTo({ top: 0 }); }} className="mtr-display text-xl font-extrabold tracking-tight shrink-0" style={{ color: p.text }}>
           MONTURE<span style={{ color: PRIMARY }}>.</span>
         </button>
-        <nav className="hidden md:flex items-center gap-8">
+        <nav className="hidden lg:flex items-center gap-5 xl:gap-6">
           <NavLink target="home">Accueil</NavLink>
-          <NavLink target="catalogue">Catalogue</NavLink>
+          {categories.map((c) => <CategoryLink key={c.label} category={c.category} gender={c.gender}>{c.label}</CategoryLink>)}
           <NavLink target="marques">Marques</NavLink>
           <NavLink target="apropos">À propos</NavLink>
         </nav>
-        <div className="flex items-center gap-3">
-          <div className="hidden md:block"><ThemeToggle compact /></div>
-          <button onClick={onGoAdmin} className="hidden md:block text-xs mtr-mono uppercase tracking-wide" style={{ color: alpha(p.text, 0.4) }}>Espace pro</button>
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="hidden lg:block"><ThemeToggle compact /></div>
+          <button onClick={onGoAdmin} className="hidden lg:block text-xs mtr-mono uppercase tracking-wide" style={{ color: alpha(p.text, 0.4) }}>Espace pro</button>
           <button onClick={onOpenCart} className="btn-magnet relative p-2.5 rounded-full" style={{ color: p.text, background: alpha(p.text, 0.06) }} aria-label="Ouvrir le panier">
             <ShoppingBag size={19} />
             {cartCount > 0 && <span className="absolute -top-1 -right-1 text-[10px] w-4.5 h-4.5 min-w-[18px] min-h-[18px] rounded-full flex items-center justify-center font-bold" style={{ background: PRIMARY, color: "#07080A", boxShadow: `0 0 10px ${PRIMARY}` }}>{cartCount}</span>}
           </button>
-          <button className="md:hidden p-2" style={{ color: p.text }} onClick={() => setMobileOpen(!mobileOpen)} aria-label="Menu">
+          <button className="lg:hidden p-2" style={{ color: p.text }} onClick={() => setMobileOpen(!mobileOpen)} aria-label="Menu">
             {mobileOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
         </div>
       </div>
       {mobileOpen && (
-        <div className="md:hidden px-5 pb-5 flex flex-col gap-4" style={{ background: p.bg }}>
+        <div className="lg:hidden px-5 pb-5 flex flex-col gap-4" style={{ background: p.bg }}>
           <NavLink target="home">Accueil</NavLink>
-          <NavLink target="catalogue">Catalogue</NavLink>
+          <div className="pl-1 flex flex-col gap-3 py-1" style={{ borderLeft: `2px solid ${alpha(PRIMARY, 0.3)}` }}>
+            {categories.map((c) => (
+              <button key={c.label} onClick={() => { onGoCategory(c.category, c.gender); setMobileOpen(false); }} className="text-sm pl-3 text-left" style={{ color: alpha(p.text, 0.65) }}>{c.label}</button>
+            ))}
+          </div>
           <NavLink target="marques">Marques</NavLink>
           <NavLink target="apropos">À propos</NavLink>
           <button onClick={() => { onGoAdmin(); setMobileOpen(false); }} className="text-xs mtr-mono uppercase tracking-wide text-left" style={{ color: alpha(p.text, 0.4) }}>Espace pro</button>
@@ -755,7 +813,7 @@ function Hero({ setPage, featured, brands, onOpenProduct }) {
             </div>
             <div className="relative mt-4 flex items-center justify-between gap-3 flex-wrap">
               <span className="mtr-display font-bold text-base md:text-lg truncate" style={{ color: p.text }}>{featuredBrand?.name} — {featured.name}</span>
-              <span className="mtr-display font-bold text-base md:text-lg inline-flex items-center gap-1.5 shrink-0" style={{ color: NEON.cyan }}><Sparkles size={16} /> {euro(featured.price)}</span>
+              <span className="mtr-display font-bold text-base md:text-lg inline-flex items-center gap-1.5 shrink-0"><PriceTag price={featured.price} compareAt={featured.compareAtPrice} className="font-bold" color={NEON.cyan} /></span>
             </div>
           </button>
         ) : (
@@ -795,10 +853,10 @@ function ScrollGlassesStory({ featured }) {
   const s3 = stepOpacity(0.66, 0.76, 0.92, 0.99);
 
   const StepCard = ({ n, title, text, style, opacity }) => (
-    <div className="hidden md:block" style={{ position: "absolute", maxWidth: 280, opacity, transform: `translateY(${(1 - opacity) * 18}px)`, transition: "opacity .1s linear", ...style }}>
-      <div className="mtr-mono text-xs mb-2" style={{ color: NEON.cyan }}>0{n}</div>
-      <h3 className="mtr-display font-bold text-xl mb-2" style={{ color: p.text }}>{title}</h3>
-      <p className="text-sm" style={{ color: alpha(p.text, 0.6) }}>{text}</p>
+    <div className="hidden md:block" style={{ position: "absolute", maxWidth: 400, opacity, transform: `translateY(${(1 - opacity) * 22}px)`, transition: "opacity .1s linear", ...style }}>
+      <div className="mtr-mono text-base font-bold mb-3 tracking-wider" style={{ color: NEON.cyan, textShadow: `0 0 14px ${alpha(NEON.cyan, 0.7)}` }}>0{n}</div>
+      <h3 className="mtr-display font-extrabold mb-3 leading-[1.05]" style={{ color: p.text, fontSize: "clamp(2rem, 3.4vw, 3rem)" }}>{title}</h3>
+      <p className="font-medium" style={{ color: alpha(p.text, 0.78), fontSize: "clamp(1rem, 1.3vw, 1.2rem)" }}>{text}</p>
     </div>
   );
 
@@ -951,7 +1009,7 @@ function ProductCard({ product, brand, onOpen, index = 0 }) {
           <div className="mt-1 font-semibold" style={{ color: p.text }}>{product.name}</div>
           <div className="mt-1 mtr-mono text-[11px]" style={{ color: p.steel }}>{product.calibre} · {product.colorName}</div>
           <div className="mt-3 flex items-center justify-between">
-            <span className="font-bold" style={{ color: p.text }}>{euro(product.price)}</span>
+            <PriceTag price={product.price} compareAt={product.compareAtPrice} className="font-bold" />
             {product.stock !== "En stock" && <Pill style={{ background: alpha(NEG, 0.14), color: NEG }}>{product.stock}</Pill>}
           </div>
         </div>
@@ -987,7 +1045,7 @@ function FeaturedGrid({ products, brands, onOpen }) {
                     <div className="mtr-mono text-[10px] uppercase tracking-[0.14em]" style={{ color: accent }}>{brand?.name}</div>
                     <div className="mt-1 font-semibold" style={{ color: p.text }}>{pr.name}</div>
                     <div className="mt-1 mtr-mono text-[11px]" style={{ color: p.steel }}>{pr.calibre} · {pr.colorName}</div>
-                    <div className="mt-3 font-bold" style={{ color: p.text }}>{euro(pr.price)}</div>
+                    <div className="mt-3"><PriceTag price={pr.price} compareAt={pr.compareAtPrice} className="font-bold" /></div>
                   </div>
                 </button>
               </div>
@@ -1080,14 +1138,25 @@ function Footer({ setPage, onGoAdmin }) {
 
 /* ---------------------------------- PUBLIC: CATALOGUE ---------------------------------- */
 
-function CatalogPage({ products, brands, onOpen }) {
+function CatalogPage({ products, brands, onOpen, initialFilter }) {
   const { p } = useTheme();
   const [query, setQuery] = useState("");
   const [brandFilter, setBrandFilter] = useState([]);
-  const [category, setCategory] = useState("Tous");
-  const [gender, setGender] = useState("Tous");
+  const [category, setCategory] = useState(initialFilter?.category || "Tous");
+  const [gender, setGender] = useState(initialFilter?.gender || "Tous");
   const [priceRange, setPriceRange] = useState("Tous");
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  // Re-syncs when the user clicks a different category link in the header while already on this
+  // page — initialFilter is a fresh object each time goCategory() is called, so this fires even
+  // if category/gender values happen to repeat.
+  useEffect(() => {
+    if (initialFilter) {
+      setCategory(initialFilter.category || "Tous");
+      setGender(initialFilter.gender || "Tous");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFilter]);
 
   const toggleBrand = (id) => setBrandFilter((f) => (f.includes(id) ? f.filter((x) => x !== id) : [...f, id]));
 
@@ -1133,7 +1202,7 @@ function CatalogPage({ products, brands, onOpen }) {
           </label>
         ))}
       </FilterGroup>
-      <FilterGroup title="Catégorie">{["Tous", "Solaire", "Optique"].map((c) => <RadioRow key={c} label={c} active={category === c} onClick={() => setCategory(c)} />)}</FilterGroup>
+      <FilterGroup title="Catégorie">{[["Tous", "Tous"], ["Solaire", "Solaire"], ["Optique", "Vue"]].map(([val, label]) => <RadioRow key={val} label={label} active={category === val} onClick={() => setCategory(val)} />)}</FilterGroup>
       <FilterGroup title="Genre">{["Tous", "Homme", "Femme", "Mixte"].map((g) => <RadioRow key={g} label={g} active={gender === g} onClick={() => setGender(g)} />)}</FilterGroup>
       <FilterGroup title="Prix">
         {[["Tous", "Tous"], ["-150", "Moins de 150 €"], ["150-300", "150 – 300 €"], ["300+", "Plus de 300 €"]].map(([val, label]) => (
@@ -1274,7 +1343,7 @@ function ProductModal({ product, brand, onClose, onAddToCart }) {
           <div className="p-8">
             <div className="mtr-mono text-xs uppercase tracking-[0.14em]" style={{ color: accent }}>{brand?.name}</div>
             <h2 className="mtr-display text-2xl font-bold mt-1" style={{ color: p.text }}>{product.name}</h2>
-            <div className="text-2xl font-bold mt-3" style={{ color: p.text }}>{euro(product.price)}</div>
+            <div className="mt-3"><PriceTag price={product.price} compareAt={product.compareAtPrice} className="text-2xl font-extrabold" /></div>
             {product.description && <p className="mt-3 text-sm" style={{ color: alpha(p.text, 0.65) }}>{product.description}</p>}
             <div className="mt-6">
               <SpecRow label="Calibre" value={product.calibre} />
@@ -1578,7 +1647,7 @@ function AdminDashboard({ products, orders, brands }) {
 
 function ProductFormModal({ open, onClose, onSave, brands, suppliers, initial }) {
   const { p } = useTheme();
-  const empty = { name: "", brandId: brands[0]?.id || "", category: "Solaire", gender: "Mixte", price: "", cost: "", colorName: "", colorHex: NEON.cyan, shape: "square", calibre: "", material: "", stock: "En stock", supplierId: suppliers[0]?.id || "", featured: false, description: "", photos: [] };
+  const empty = { name: "", brandId: brands[0]?.id || "", category: "Solaire", gender: "Mixte", price: "", cost: "", compareAtPrice: null, colorName: "", colorHex: NEON.cyan, shape: "square", calibre: "", material: "", stock: "En stock", supplierId: suppliers[0]?.id || "", featured: false, description: "", photos: [] };
   const [form, setForm] = useState(initial || empty);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
@@ -1639,6 +1708,7 @@ function ProductFormModal({ open, onClose, onSave, brands, suppliers, initial })
           <Field label="Catégorie"><select className={inputCls} style={inputStyle} value={form.category} onChange={(e) => set("category", e.target.value)}><option>Solaire</option><option>Optique</option></select></Field>
           <Field label="Genre"><select className={inputCls} style={inputStyle} value={form.gender} onChange={(e) => set("gender", e.target.value)}><option>Mixte</option><option>Homme</option><option>Femme</option></select></Field>
           <Field label="Prix de vente (€)"><input type="number" className={inputCls} style={inputStyle} value={form.price} onChange={(e) => set("price", Number(e.target.value))} /></Field>
+          <Field label="Prix barré (€, optionnel)"><input type="number" className={inputCls} style={inputStyle} value={form.compareAtPrice || ""} onChange={(e) => set("compareAtPrice", e.target.value ? Number(e.target.value) : null)} placeholder="Prix de référence réel avant remise" /></Field>
           <Field label="Coût fournisseur (€)"><input type="number" className={inputCls} style={inputStyle} value={form.cost} onChange={(e) => set("cost", Number(e.target.value))} /></Field>
           <Field label="Coloris (nom)"><input className={inputCls} style={inputStyle} value={form.colorName} onChange={(e) => set("colorName", e.target.value)} /></Field>
           <Field label="Coloris (teinte)"><input type="color" className="w-full h-10 rounded-lg" style={inputStyle} value={form.colorHex} onChange={(e) => set("colorHex", e.target.value)} /></Field>
@@ -1735,6 +1805,7 @@ const IMPORT_FIELD_DEFS = [
   { id: "category", label: "Catégorie", aliases: ["categorie", "catégorie", "category"], required: false },
   { id: "gender", label: "Genre", aliases: ["genre", "gender"], required: false },
   { id: "price", label: "Prix", aliases: ["prix", "price", "prix de vente"], required: true },
+  { id: "compareAtPrice", label: "Prix barré (optionnel)", aliases: ["prix barre", "prix barré", "prix initial", "ancien prix", "prix normal", "compare at price", "compareatprice"], required: false },
   { id: "cost", label: "Coût", aliases: ["cout", "coût", "cost", "prix fournisseur"], required: false },
   { id: "colorName", label: "Coloris", aliases: ["coloris", "couleur", "color"], required: false },
   { id: "colorHex", label: "Teinte (hex)", aliases: ["teinte", "hex", "couleur hex", "colorhex"], required: false },
@@ -1794,6 +1865,13 @@ function buildImportRawRow(row, mapping, rowIndex) {
   const price = parseImportNumber(get("price"));
   if (isNaN(price) || price <= 0) { messages.push("Prix invalide"); blocking = true; }
 
+  const compareAtRaw = parseImportNumber(get("compareAtPrice"));
+  let compareAtPrice = null;
+  if (!isNaN(compareAtRaw) && compareAtRaw > 0) {
+    if (compareAtRaw > price) compareAtPrice = compareAtRaw;
+    else messages.push("Prix barré ignoré (doit être supérieur au prix de vente)");
+  }
+
   const brandNameRaw = get("brandName");
   if (!brandNameRaw) { messages.push("Marque manquante"); blocking = true; }
 
@@ -1837,6 +1915,7 @@ function buildImportRawRow(row, mapping, rowIndex) {
     rowIndex, name, brandNameRaw,
     category, gender,
     price: isNaN(price) ? 0 : price,
+    compareAtPrice,
     cost,
     colorName: get("colorName") || "Standard",
     colorHex, calibre: get("calibre"), material: get("material"), shape, stock,
@@ -1985,7 +2064,7 @@ function ImportWizard({ open, onClose, brands, suppliers, onImport }) {
     const newProducts = importable.map((r) => ({
       id: newId("p"),
       name: r.name, brandId: r.brandId, category: r.category, gender: r.gender,
-      price: r.price, cost: r.cost, colorName: r.colorName, colorHex: r.colorHex,
+      price: r.price, compareAtPrice: r.compareAtPrice, cost: r.cost, colorName: r.colorName, colorHex: r.colorHex,
       shape: r.shape, calibre: r.calibre, material: r.material, stock: r.stock,
       supplierId: r.supplierId, featured: false, description: r.description, photos: r.photos,
     }));
@@ -2326,7 +2405,7 @@ function AdminProducts({ products, setProducts, brands, setBrands, suppliers, se
                       <div className="text-xs mtr-mono" style={{ color: BRAND_ACCENT[pr.brandId] || PRIMARY }}>{brand?.name}</div>
                     </td>
                     <td className="px-4 py-3" style={{ color: p.steel }}>{pr.category}</td>
-                    <td className="px-4 py-3 font-medium" style={{ color: p.text }}>{euro(pr.price)}</td>
+                    <td className="px-4 py-3 font-medium"><PriceTag price={pr.price} compareAt={pr.compareAtPrice} className="font-medium" /></td>
                     <td className="px-4 py-3" style={{ color: p.steel }}>{euro(pr.cost)}</td>
                     <td className="px-4 py-3"><Pill style={{ background: margin > 30 ? alpha(NEON.lime, 0.14) : alpha(NEG, 0.14), color: margin > 30 ? NEON.lime : NEG }}>{margin}%</Pill></td>
                     <td className="px-4 py-3 text-xs" style={{ color: p.steel }}>{supplier?.name}</td>
@@ -2651,6 +2730,7 @@ function Root() {
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [activeProduct, setActiveProduct] = useState(null);
+  const [catalogFilter, setCatalogFilter] = useState({ category: "Tous", gender: "Tous" });
 
   // Picked once products are loaded (i.e. once per visit / page refresh), not recomputed on every
   // re-render — otherwise unrelated state changes elsewhere (theme toggle, cart) would swap the
@@ -2707,6 +2787,17 @@ function Root() {
 
   const goAdmin = () => { setMode("admin"); setCartOpen(false); };
   const backToSite = () => setMode("site");
+  // Wraps setPage so any "go to catalogue" entry point (hero CTA, footer, brand cards…) resets
+  // the category/gender filter to "Tous" — only the header's dedicated category links set a filter.
+  const goPage = (pg) => {
+    if (pg === "catalogue") setCatalogFilter({ category: "Tous", gender: "Tous" });
+    setPage(pg);
+  };
+  const goCategory = (category, gender) => {
+    setCatalogFilter({ category, gender });
+    setPage("catalogue");
+    window.scrollTo({ top: 0 });
+  };
   const handleLogin = async (email, password) => { await signIn(email, password); };
   const handleLogout = async () => { await signOut(); };
 
@@ -2750,22 +2841,23 @@ function Root() {
 
   return (
     <div className="mtr grain" style={{ background: p.bg, minHeight: "100vh" }}>
-      <SiteHeader page={page} setPage={setPage} cartCount={cartCount} onOpenCart={() => setCartOpen(true)} onGoAdmin={goAdmin} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
+      <AnnounceBar />
+      <SiteHeader page={page} setPage={goPage} onGoCategory={goCategory} cartCount={cartCount} onOpenCart={() => setCartOpen(true)} onGoAdmin={goAdmin} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
 
       {page === "home" && (
         <>
-          <Hero setPage={setPage} featured={featuredProduct} brands={brands} onOpenProduct={setActiveProduct} />
+          <Hero setPage={goPage} featured={featuredProduct} brands={brands} onOpenProduct={setActiveProduct} />
           <ScrollGlassesStory featured={featuredProduct} />
-          <LensRevealBrands brands={brands} setPage={setPage} />
+          <LensRevealBrands brands={brands} setPage={goPage} />
           <FeaturedGrid products={products} brands={brands} onOpen={setActiveProduct} />
           <TrustBand />
         </>
       )}
-      {page === "catalogue" && <CatalogPage products={products} brands={brands} onOpen={setActiveProduct} />}
-      {page === "marques" && <BrandsPage brands={brands} products={products} setPage={setPage} />}
-      {page === "apropos" && <AboutPage setPage={setPage} />}
+      {page === "catalogue" && <CatalogPage products={products} brands={brands} onOpen={setActiveProduct} initialFilter={catalogFilter} />}
+      {page === "marques" && <BrandsPage brands={brands} products={products} setPage={goPage} />}
+      {page === "apropos" && <AboutPage setPage={goPage} />}
 
-      <Footer setPage={setPage} onGoAdmin={goAdmin} />
+      <Footer setPage={goPage} onGoAdmin={goAdmin} />
 
       <ProductModal product={activeProduct} brand={activeProduct ? brands.find((b) => b.id === activeProduct.brandId) : null} onClose={() => setActiveProduct(null)} onAddToCart={addToCart} />
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} cart={cart} products={products} brands={brands} updateQty={updateQty} removeItem={removeItem} onCheckout={() => { setCartOpen(false); setCheckoutOpen(true); }} />
