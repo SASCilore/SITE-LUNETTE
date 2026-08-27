@@ -63,7 +63,11 @@ function ThemeToggle({ compact = false }) {
 /* ---------------------------------- HELPERS ---------------------------------- */
 
 const euro = (n) => n.toLocaleString("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
-const newId = (prefix) => `${prefix}${Date.now()}${Math.floor(Math.random() * 1000)}`;
+const newId = (prefix) => {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return `${prefix}_${crypto.randomUUID()}`;
+  // Fallback for very old browsers without crypto.randomUUID (non-HTTPS/non-localhost edge case).
+  return `${prefix}${Date.now()}${Math.floor(Math.random() * 1e9)}${Math.floor(Math.random() * 1e9)}`;
+};
 const alpha = (hex, a) => {
   const h = hex.replace("#", "");
   const r = parseInt(h.substring(0, 2), 16), g = parseInt(h.substring(2, 4), 16), b = parseInt(h.substring(4, 6), 16);
