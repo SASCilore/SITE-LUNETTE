@@ -35,7 +35,7 @@ function useTheme() {
   return useContext(ThemeCtx);
 }
 function ThemeProvider({ children }) {
-  const [dark, setDark] = useState(true);
+  const [dark, setDark] = useState(false);
   const p = getPalette(dark);
   return <ThemeCtx.Provider value={{ dark, p, toggle: () => setDark((d) => !d) }}>{children}</ThemeCtx.Provider>;
 }
@@ -763,9 +763,9 @@ function Hero({ setPage, products, brands, onOpenProduct }) {
             <div className="relative w-full flex items-center justify-center" style={{ height: 260 }}>
               <img src={featured.photos[0]} alt={featured.name} className="max-w-full max-h-full object-contain" />
             </div>
-            <div className="relative mt-2 flex items-center justify-between mtr-mono text-[11px] uppercase tracking-wide" style={{ color: alpha(p.text, 0.4) }}>
-              <span className="truncate pr-3">{featuredBrand?.name} — {featured.name}</span>
-              <span className="inline-flex items-center gap-1 shrink-0"><Sparkles size={12} style={{ color: NEON.cyan }} /> {euro(featured.price)}</span>
+            <div className="relative mt-4 flex items-center justify-between gap-3 flex-wrap">
+              <span className="mtr-display font-bold text-base md:text-lg truncate" style={{ color: p.text }}>{featuredBrand?.name} — {featured.name}</span>
+              <span className="mtr-display font-bold text-base md:text-lg inline-flex items-center gap-1.5 shrink-0" style={{ color: NEON.cyan }}><Sparkles size={16} /> {euro(featured.price)}</span>
             </div>
           </button>
         ) : (
