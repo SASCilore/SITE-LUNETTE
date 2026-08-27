@@ -694,12 +694,24 @@ function SiteHeader({ page, setPage, cartCount, onOpenCart, onGoAdmin, mobileOpe
 
 /* ---------------------------------- PUBLIC: HERO ---------------------------------- */
 
-function Hero({ setPage }) {
+function Hero({ setPage, products, brands, onOpenProduct }) {
   const { p, dark } = useTheme();
   const sectionRef = useRef(null);
   const [spot, setSpot] = useState({ x: 50, y: 40, active: false });
   const blend = dark ? "screen" : "multiply";
   const boost = dark ? 1 : 1.7;
+  const tilt = useTilt(7);
+
+  // Picked once per mount (i.e. once per visit to the home page / page refresh), not on every
+  // re-render — otherwise unrelated state changes elsewhere (theme toggle, cart) would swap the
+  // featured product mid-session, which would feel like a bug rather than a nice surprise.
+  const featuredRef = useRef(undefined);
+  if (featuredRef.current === undefined && products && products.length > 0) {
+    const withPhotos = products.filter((pr) => pr.photos && pr.photos.length > 0);
+    featuredRef.current = withPhotos.length ? withPhotos[Math.floor(Math.random() * withPhotos.length)] : null;
+  }
+  const featured = featuredRef.current || null;
+  const featuredBrand = featured ? brands.find((b) => b.id === featured.brandId) : null;
 
   const onMove = (e) => {
     const el = sectionRef.current;
@@ -738,14 +750,34 @@ function Hero({ setPage }) {
           </div>
         </div>
 
-        <div style={{ "--edge": NEON.cyan }} className="neon-border relative rounded-3xl p-6 md:p-10">
-          <div className="absolute inset-0 rounded-3xl" style={{ background: alpha(p.text, 0.03), backdropFilter: "blur(6px)", border: `1px solid ${p.border}` }} />
-          <div className="relative"><Glasses3D tint={NEON.cyan} mode="mouse" height={260} /></div>
-          <div className="relative mt-2 flex items-center justify-between mtr-mono text-[11px] uppercase tracking-wide" style={{ color: alpha(p.text, 0.4) }}>
-            <span>Réf. 58-14-135</span>
-            <span className="inline-flex items-center gap-1"><Sparkles size={12} style={{ color: NEON.cyan }} /> Verres holo</span>
+        {featured ? (
+          <button
+            ref={tilt.ref}
+            onMouseMove={tilt.onMouseMove}
+            onMouseLeave={tilt.onMouseLeave}
+            onClick={() => onOpenProduct && onOpenProduct(featured)}
+            style={{ ...tilt.style, "--edge": NEON.cyan }}
+            className="neon-border relative rounded-3xl p-6 md:p-10 text-left w-full"
+          >
+            <div className="absolute inset-0 rounded-3xl" style={{ background: alpha(p.text, 0.03), backdropFilter: "blur(6px)", border: `1px solid ${p.border}` }} />
+            <div className="relative w-full flex items-center justify-center" style={{ height: 260 }}>
+              <img src={featured.photos[0]} alt={featured.name} className="max-w-full max-h-full object-contain" />
+            </div>
+            <div className="relative mt-2 flex items-center justify-between mtr-mono text-[11px] uppercase tracking-wide" style={{ color: alpha(p.text, 0.4) }}>
+              <span className="truncate pr-3">{featuredBrand?.name} — {featured.name}</span>
+              <span className="inline-flex items-center gap-1 shrink-0"><Sparkles size={12} style={{ color: NEON.cyan }} /> {euro(featured.price)}</span>
+            </div>
+          </button>
+        ) : (
+          <div style={{ "--edge": NEON.cyan }} className="neon-border relative rounded-3xl p-6 md:p-10">
+            <div className="absolute inset-0 rounded-3xl" style={{ background: alpha(p.text, 0.03), backdropFilter: "blur(6px)", border: `1px solid ${p.border}` }} />
+            <div className="relative"><Glasses3D tint={NEON.cyan} mode="mouse" height={260} /></div>
+            <div className="relative mt-2 flex items-center justify-between mtr-mono text-[11px] uppercase tracking-wide" style={{ color: alpha(p.text, 0.4) }}>
+              <span>Réf. 58-14-135</span>
+              <span className="inline-flex items-center gap-1"><Sparkles size={12} style={{ color: NEON.cyan }} /> Verres holo</span>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </section>
   );
@@ -2705,7 +2737,7 @@ function Root() {
 
       {page === "home" && (
         <>
-          <Hero setPage={setPage} />
+          <Hero setPage={setPage} products={products} brands={brands} onOpenProduct={setActiveProduct} />
           <ScrollGlassesStory />
           <LensRevealBrands brands={brands} setPage={setPage} />
           <FeaturedGrid products={products} brands={brands} onOpen={setActiveProduct} />
