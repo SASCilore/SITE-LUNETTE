@@ -6,8 +6,15 @@ import {
   ShoppingBag, X, Plus, Minus, Search, ChevronDown, ChevronRight,
   LayoutDashboard, Package, Tags, Truck, ClipboardList, LogOut,
   Trash2, Pencil, Check, ArrowRight, Menu, Filter, ArrowLeft, Building2, Sparkles, Sun, Moon,
-  Upload, FileSpreadsheet, Download, AlertTriangle, CheckCircle2, XCircle,
+  Upload, FileSpreadsheet, Download, AlertTriangle, CheckCircle2, XCircle, Image as ImageIcon, Loader2,
 } from "lucide-react";
+import {
+  fetchAllData, dbCreateBrand, dbCreateBrands, dbUpdateBrand, dbDeleteBrand,
+  dbCreateSupplier, dbCreateSuppliers, dbUpdateSupplier, dbDeleteSupplier,
+  dbCreateProduct, dbCreateProducts, dbUpdateProduct, dbDeleteProduct,
+  dbCreateOrder, dbUpdateOrderStatus, dbDeleteOrder,
+  uploadProductPhoto, signIn, signOut, getSession, onAuthChange,
+} from "./lib/supabase.js";
 
 /* ---------------------------------- THEME ---------------------------------- */
 
@@ -50,41 +57,8 @@ function ThemeToggle({ compact = false }) {
   );
 }
 
-/* ---------------------------------- SEED DATA ---------------------------------- */
-
-const BRANDS_SEED = [
-  { id: "rb", name: "Ray-Ban", origin: "États-Unis", desc: "Icônes intemporelles depuis 1937." },
-  { id: "ok", name: "Oakley", origin: "États-Unis", desc: "Performance sportive et lentilles techniques." },
-  { id: "pr", name: "Prada", origin: "Italie", desc: "Haute couture milanaise, lignes graphiques." },
-  { id: "ps", name: "Persol", origin: "Italie", desc: "Artisanat optique turinois depuis 1917." },
-  { id: "gc", name: "Gucci", origin: "Italie", desc: "Maximalisme signature, écailles franches." },
-  { id: "ca", name: "Carrera", origin: "Autriche", desc: "Héritage racing, montures légères." },
-];
-
-const SUPPLIERS_SEED = [
-  { id: "s1", name: "Lux Optic Distribution", contact: "contact@luxoptic-dist.fr", delay: "3–5 jours ouvrés", location: "Lyon, France", brandIds: ["rb", "ok", "ca"] },
-  { id: "s2", name: "Milano Eyewear Group", contact: "orders@milanoeyewear.it", delay: "5–8 jours ouvrés", location: "Milan, Italie", brandIds: ["pr", "gc", "ps"] },
-  { id: "s3", name: "EuroFrame Wholesale", contact: "sales@euroframe.eu", delay: "4–6 jours ouvrés", location: "Anvers, Belgique", brandIds: ["rb", "ps", "ca"] },
-];
-
-const PRODUCTS_SEED = [
-  { id: "p1", name: "Aviator Classic", brandId: "rb", category: "Solaire", gender: "Mixte", price: 179, cost: 92, colorName: "Or / Cyan miroir", colorHex: NEON.cyan, shape: "round", calibre: "58-14-135", material: "Métal, verres miroir", stock: "En stock", supplierId: "s1", featured: true, description: "L'aviator qui a défini le genre, ici en monture métal doré et verres miroir cyan." },
-  { id: "p2", name: "Wayfarer Original", brandId: "rb", category: "Solaire", gender: "Mixte", price: 169, cost: 88, colorName: "Noir / Lime fluo", colorHex: NEON.lime, shape: "square", calibre: "50-22-150", material: "Acétate", stock: "En stock", supplierId: "s1", featured: false, description: "La silhouette la plus copiée de l'histoire de l'optique, verres lime fluo." },
-  { id: "p3", name: "Holbrook Prizm", brandId: "ok", category: "Solaire", gender: "Homme", price: 189, cost: 95, colorName: "Noir / Prizm violet", colorHex: NEON.violet, shape: "square", calibre: "55-18-137", material: "O Matter, Prizm", stock: "Sur commande", supplierId: "s1", featured: true, description: "Monture sport injectée O Matter, verres Prizm violet haute définition." },
-  { id: "p4", name: "PO3019V", brandId: "ps", category: "Optique", gender: "Mixte", price: 259, cost: 140, colorName: "Écaille havane", colorHex: "#8FA3AD", shape: "round", calibre: "52-18-140", material: "Acétate injecté", stock: "En stock", supplierId: "s2", featured: false, description: "Monture optique artisanale turinoise, écaille havane, verres neutres." },
-  { id: "p5", name: "Cat-Eye PR17W", brandId: "pr", category: "Solaire", gender: "Femme", price: 289, cost: 150, colorName: "Rose fluo dégradé", colorHex: NEON.pink, shape: "round", calibre: "54-17-140", material: "Acétate, verres dégradés", stock: "En stock", supplierId: "s2", featured: true, description: "Cat-eye milanais, verres dégradés rose fluo, finition haute couture." },
-  { id: "p6", name: "GG0061S", brandId: "gc", category: "Solaire", gender: "Femme", price: 329, cost: 175, colorName: "Écaille / Orange fluo", colorHex: NEON.orange, shape: "square", calibre: "54-17-135", material: "Acétate épais", stock: "En stock", supplierId: "s2", featured: true, description: "Monture maximaliste signature, écaille épaisse et verres orange fluo." },
-  { id: "p7", name: "1027/S", brandId: "ca", category: "Solaire", gender: "Homme", price: 139, cost: 68, colorName: "Bleu / Cyan électrique", colorHex: NEON.cyan, shape: "round", calibre: "58-17-135", material: "Métal léger", stock: "Rupture", supplierId: "s3", featured: false, description: "Héritage racing autrichien, monture métal ultra-légère, teinte cyan électrique." },
-  { id: "p8", name: "Clubmaster Optique", brandId: "rb", category: "Optique", gender: "Mixte", price: 159, cost: 82, colorName: "Noir / Or", colorHex: "#9AA3AD", shape: "square", calibre: "51-21-145", material: "Acétate / métal", stock: "En stock", supplierId: "s3", featured: false, description: "Le browline emblématique, combinaison acétate et métal doré." },
-];
-
-const ORDERS_SEED = [
-  { id: "o1", client: "Camille Roussel", email: "camille.roussel@mail.fr", date: "22/08/2026", items: [{ productId: "p1", qty: 1 }, { productId: "p8", qty: 1 }], status: "Livrée" },
-  { id: "o2", client: "Yanis Belkacem", email: "y.belkacem@mail.fr", date: "23/08/2026", items: [{ productId: "p3", qty: 1 }], status: "Expédiée" },
-  { id: "o3", client: "Inès Dupont", email: "ines.dupont@mail.fr", date: "23/08/2026", items: [{ productId: "p6", qty: 1 }], status: "En attente" },
-  { id: "o4", client: "Thomas Lefèvre", email: "t.lefevre@mail.fr", date: "24/08/2026", items: [{ productId: "p2", qty: 2 }], status: "En attente" },
-  { id: "o5", client: "Sarah Cohen", email: "sarah.cohen@mail.fr", date: "20/08/2026", items: [{ productId: "p5", qty: 1 }, { productId: "p7", qty: 1 }], status: "Annulée" },
-];
+/* Les données produits/marques/fournisseurs/commandes vivent désormais dans Supabase
+   (voir supabase/schema.sql). Elles sont chargées au démarrage par Root via fetchAllData(). */
 
 /* ---------------------------------- HELPERS ---------------------------------- */
 
@@ -304,6 +278,23 @@ function GlassesGlyph({ shape = "square", tint = NEON.cyan, stroke = "rgba(154,1
     </svg>
   );
 }
+
+// Shows the real product photo when one has been uploaded/imported; falls back to the illustrated
+// glyph otherwise (e.g. freshly imported rows with no photo yet, or the demo brands).
+function ProductVisual({ product, holo = false, stroke, className = "" }) {
+  if (product?.photo) {
+    return (
+      <img
+        src={product.photo}
+        alt={product.name || ""}
+        className={`w-full h-full object-contain ${className}`}
+        onError={(e) => { e.currentTarget.style.display = "none"; }}
+      />
+    );
+  }
+  return <GlassesGlyph shape={product?.shape} tint={product?.colorHex} stroke={stroke} holo={holo} />;
+}
+
 
 /* ---------------------------------- SMALL UI ATOMS ---------------------------------- */
 
@@ -874,7 +865,7 @@ function ProductCard({ product, brand, onOpen, index = 0 }) {
       <button ref={tilt.ref} onMouseMove={tilt.onMouseMove} onMouseLeave={tilt.onMouseLeave} onClick={() => onOpen(product)} className="glyph-card card-lift neon-border group text-left rounded-2xl overflow-hidden w-full" style={{ ...tilt.style, background: p.bg2, border: `1px solid ${dark ? p.border : alpha(accent, 0.4)}`, "--edge": accent }}>
         {!dark && <div style={{ height: 3, background: accent }} />}
         <div className="relative p-6 pb-2">
-          <GlassesGlyph shape={product.shape} tint={product.colorHex} stroke={alpha(p.text, 0.5)} />
+          <ProductVisual product={product} stroke={alpha(p.text, 0.5)} />
           <div className="absolute inset-x-4 bottom-1 text-center text-[11px] mtr-mono uppercase tracking-wide opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: accent }}>Voir la fiche →</div>
         </div>
         <div className="px-5 pb-5 pt-2">
@@ -913,7 +904,7 @@ function FeaturedGrid({ products, brands, onOpen }) {
             return (
               <div key={pr.id} ref={ref} className={`reveal ${visible ? "visible" : ""}`} style={{ transitionDelay: `${(i % 4) * 70}ms` }}>
                 <button ref={tilt.ref} onMouseMove={tilt.onMouseMove} onMouseLeave={tilt.onMouseLeave} onClick={() => onOpen(pr)} className="glyph-card card-lift neon-border group text-left rounded-2xl overflow-hidden w-full" style={{ ...tilt.style, background: p.bg2, border: `1px solid ${p.border}`, "--edge": accent }}>
-                  <div className="relative p-6 pb-2"><GlassesGlyph shape={pr.shape} tint={pr.colorHex} stroke={alpha(p.text, 0.5)} holo /></div>
+                  <div className="relative p-6 pb-2"><ProductVisual product={pr} stroke={alpha(p.text, 0.5)} holo /></div>
                   <div className="px-5 pb-5 pt-2">
                     <div className="mtr-mono text-[10px] uppercase tracking-[0.14em]" style={{ color: accent }}>{brand?.name}</div>
                     <div className="mt-1 font-semibold" style={{ color: p.text }}>{pr.name}</div>
@@ -1200,7 +1191,7 @@ function ProductModal({ product, brand, onClose, onAddToCart }) {
         <div className="grid md:grid-cols-2">
           <div className="p-10 relative overflow-hidden" style={{ background: p.bg3 }}>
             <div className="mesh-bg"><div className="mesh-blob" style={{ width: 260, height: 260, top: -60, left: -40, background: product.colorHex, opacity: 0.3 }} /></div>
-            <div className="relative"><GlassesGlyph shape={product.shape} tint={product.colorHex} stroke={alpha(p.text, 0.55)} holo /></div>
+            <div className="relative"><ProductVisual product={product} stroke={alpha(p.text, 0.55)} holo /></div>
           </div>
           <div className="p-8">
             <div className="mtr-mono text-xs uppercase tracking-[0.14em]" style={{ color: accent }}>{brand?.name}</div>
@@ -1258,7 +1249,7 @@ function CartDrawer({ open, onClose, cart, products, brands, updateQty, removeIt
               return (
                 <div key={l.productId} className="flex gap-4 py-4 border-b" style={{ borderColor: p.border }}>
                   <div className="w-20 h-14 rounded-lg overflow-hidden shrink-0 p-2" style={{ background: p.bg3 }}>
-                    <GlassesGlyph shape={l.product?.shape} tint={l.product?.colorHex} stroke={alpha(p.text, 0.5)} />
+                    <ProductVisual product={l.product} stroke={alpha(p.text, 0.5)} />
                   </div>
                   <div className="flex-1">
                     <div className="text-xs mtr-mono uppercase" style={{ color: accent }}>{brand?.name}</div>
@@ -1340,7 +1331,22 @@ function AdminLogin({ onLogin, onBackToSite }) {
   const { p } = useTheme();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
   const inputStyle = { background: p.bg2, color: p.text, border: `1px solid ${p.borderStrong}` };
+
+  const submit = async () => {
+    if (!email || !password) { setError("Renseignez identifiant et mot de passe."); return; }
+    setPending(true); setError("");
+    try {
+      await onLogin(email, password);
+    } catch (err) {
+      setError(err.message === "Invalid login credentials" ? "Identifiant ou mot de passe incorrect." : (err.message || "Échec de connexion."));
+    } finally {
+      setPending(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center px-5 relative overflow-hidden" style={{ background: p.bg }}>
       <div className="mesh-bg">
@@ -1352,11 +1358,14 @@ function AdminLogin({ onLogin, onBackToSite }) {
         <div className="mtr-display text-2xl font-extrabold mb-1" style={{ color: p.text }}>MONTURE<span style={{ color: PRIMARY }}>.</span> Pro</div>
         <p className="text-sm mb-8" style={{ color: alpha(p.text, 0.45) }}>Espace d'administration du catalogue et des commandes.</p>
         <div className="space-y-3">
-          <input placeholder="Identifiant" value={email} onChange={(e) => setEmail(e.target.value)} className="mtr-input w-full px-4 py-3 rounded-xl text-sm outline-none" style={inputStyle} />
-          <input placeholder="Mot de passe" type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mtr-input w-full px-4 py-3 rounded-xl text-sm outline-none" style={inputStyle} />
+          <input placeholder="Adresse e-mail" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} className="mtr-input w-full px-4 py-3 rounded-xl text-sm outline-none" style={inputStyle} />
+          <input placeholder="Mot de passe" type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} className="mtr-input w-full px-4 py-3 rounded-xl text-sm outline-none" style={inputStyle} />
         </div>
-        <NeonButton onClick={onLogin} className="w-full mt-5 py-3 rounded-full">Se connecter</NeonButton>
-        <p className="text-[11px] mt-4 text-center" style={{ color: alpha(p.text, 0.32) }}>Démo — n'importe quel identifiant fonctionne.</p>
+        {error && <p className="text-sm mt-3" style={{ color: NEG }}>{error}</p>}
+        <NeonButton onClick={submit} disabled={pending} className="w-full mt-5 py-3 rounded-full flex items-center justify-center gap-2">
+          {pending ? <><Loader2 size={16} className="animate-spin" /> Connexion…</> : "Se connecter"}
+        </NeonButton>
+        <p className="text-[11px] mt-4 text-center" style={{ color: alpha(p.text, 0.32) }}>Créez un utilisateur admin dans Supabase → Authentication → Users.</p>
         <div className="mt-6 flex justify-center"><ThemeToggle /></div>
       </div>
     </div>
@@ -1491,12 +1500,27 @@ function AdminDashboard({ products, orders, brands }) {
 
 function ProductFormModal({ open, onClose, onSave, brands, suppliers, initial }) {
   const { p } = useTheme();
-  const empty = { name: "", brandId: brands[0]?.id || "", category: "Solaire", gender: "Mixte", price: "", cost: "", colorName: "", colorHex: NEON.cyan, shape: "square", calibre: "", material: "", stock: "En stock", supplierId: suppliers[0]?.id || "", featured: false, description: "" };
+  const empty = { name: "", brandId: brands[0]?.id || "", category: "Solaire", gender: "Mixte", price: "", cost: "", colorName: "", colorHex: NEON.cyan, shape: "square", calibre: "", material: "", stock: "En stock", supplierId: suppliers[0]?.id || "", featured: false, description: "", photo: "" };
   const [form, setForm] = useState(initial || empty);
-  useEffect(() => { setForm(initial || empty); }, [initial, open]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  useEffect(() => { setForm(initial || empty); setUploadError(""); }, [initial, open]);
   if (!open) return null;
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const margin = form.price && form.cost ? Math.round(((form.price - form.cost) / form.price) * 100) : null;
+
+  const handlePhotoFile = async (file) => {
+    if (!file) return;
+    setUploading(true); setUploadError("");
+    try {
+      const url = await uploadProductPhoto(file, initial?.id);
+      set("photo", url);
+    } catch (err) {
+      setUploadError(err.message || "Échec de l'envoi de la photo.");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const Field = ({ label, children }) => (
     <div>
@@ -1540,6 +1564,34 @@ function ProductFormModal({ open, onClose, onSave, brands, suppliers, initial })
           <label className="text-xs mtr-mono uppercase tracking-wide block mb-1.5" style={{ color: p.steel }}>Description</label>
           <textarea rows={2} className={inputCls} style={inputStyle} value={form.description} onChange={(e) => set("description", e.target.value)} placeholder="Courte description pour la fiche produit…" />
         </div>
+        <div className="mt-4">
+          <label className="text-xs mtr-mono uppercase tracking-wide block mb-1.5" style={{ color: p.steel }}>Photo produit</label>
+          <div className="flex items-center gap-4">
+            <div className="w-20 h-16 rounded-lg overflow-hidden shrink-0 flex items-center justify-center" style={{ background: p.bg3, border: `1px solid ${p.border}` }}>
+              {uploading ? (
+                <Loader2 size={18} className="animate-spin" style={{ color: p.steel }} />
+              ) : form.photo ? (
+                <img src={form.photo} alt="" className="w-full h-full object-contain" />
+              ) : (
+                <ImageIcon size={18} style={{ color: p.steel }} />
+              )}
+            </div>
+            <div className="flex-1 space-y-2">
+              <input
+                className={inputCls}
+                style={inputStyle}
+                value={form.photo}
+                onChange={(e) => set("photo", e.target.value)}
+                placeholder="URL de la photo, ou envoyez un fichier ci-dessous"
+              />
+              <label className="inline-flex items-center gap-1.5 text-xs font-medium cursor-pointer" style={{ color: PRIMARY }}>
+                <Upload size={13} /> Envoyer une photo
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => handlePhotoFile(e.target.files?.[0])} />
+              </label>
+            </div>
+          </div>
+          {uploadError && <p className="text-xs mt-1.5" style={{ color: NEG }}>{uploadError}</p>}
+        </div>
         {margin !== null && (
           <div className="mt-4 text-sm" style={{ color: p.steel }}>
             Marge estimée : <strong style={{ color: margin > 30 ? NEON.lime : NEG }}>{margin}%</strong> ({euro(form.price - form.cost)})
@@ -1547,7 +1599,7 @@ function ProductFormModal({ open, onClose, onSave, brands, suppliers, initial })
         )}
         <div className="flex gap-3 mt-6">
           <button onClick={onClose} className="flex-1 py-3 rounded-full font-semibold text-sm" style={{ border: `1px solid ${p.borderStrong}`, color: p.text }}>Annuler</button>
-          <button onClick={() => onSave(form)} disabled={!form.name || !form.price} className="btn-magnet flex-1 py-3 rounded-full font-semibold text-sm disabled:opacity-40" style={{ background: p.text, color: p.bg }}>Enregistrer</button>
+          <button onClick={() => onSave(form)} disabled={!form.name || !form.price || uploading} className="btn-magnet flex-1 py-3 rounded-full font-semibold text-sm disabled:opacity-40" style={{ background: p.text, color: p.bg }}>Enregistrer</button>
         </div>
       </div>
     </div>
@@ -1793,7 +1845,10 @@ function ImportWizard({ open, onClose, brands, suppliers, onImport }) {
     return resolveImportRows(raw, brands, suppliers);
   }, [step, dataRows, mapping, brands, suppliers]);
 
-  const confirmImport = () => {
+  const [importPending, setImportPending] = useState(false);
+  const [importError, setImportError] = useState("");
+
+  const confirmImport = async () => {
     if (!resolved) return;
     const importable = resolved.rows.filter((r) => r.status !== "error");
     const newProducts = importable.map((r) => ({
@@ -1801,11 +1856,18 @@ function ImportWizard({ open, onClose, brands, suppliers, onImport }) {
       name: r.name, brandId: r.brandId, category: r.category, gender: r.gender,
       price: r.price, cost: r.cost, colorName: r.colorName, colorHex: r.colorHex,
       shape: r.shape, calibre: r.calibre, material: r.material, stock: r.stock,
-      supplierId: r.supplierId, featured: false, description: r.description,
+      supplierId: r.supplierId, featured: false, description: r.description, photo: r.photo,
     }));
-    onImport({ newProducts, newBrands: resolved.newBrands, newSuppliers: resolved.newSuppliers });
-    setResult({ imported: newProducts.length, skipped: resolved.rows.length - importable.length, newBrands: resolved.newBrands.length, newSuppliers: resolved.newSuppliers.length });
-    setStep("done");
+    setImportPending(true); setImportError("");
+    try {
+      await onImport({ newProducts, newBrands: resolved.newBrands, newSuppliers: resolved.newSuppliers });
+      setResult({ imported: newProducts.length, skipped: resolved.rows.length - importable.length, newBrands: resolved.newBrands.length, newSuppliers: resolved.newSuppliers.length });
+      setStep("done");
+    } catch (err) {
+      setImportError(err.message || "Échec de l'import en base de données.");
+    } finally {
+      setImportPending(false);
+    }
   };
 
   if (!open) return null;
@@ -1927,14 +1989,16 @@ function ImportWizard({ open, onClose, brands, suppliers, onImport }) {
                 </tbody>
               </table>
             </div>
+            {importError && <p className="text-sm mt-4" style={{ color: NEG }}>{importError}</p>}
             <div className="flex gap-3 mt-6">
-              <button onClick={() => setStep("mapping")} className="flex-1 py-3 rounded-full font-semibold text-sm" style={{ border: `1px solid ${p.borderStrong}`, color: p.text }}>Revoir le mapping</button>
-              <NeonButton onClick={confirmImport} disabled={resolved.summary.ok + resolved.summary.warning === 0} className="flex-1 py-3 rounded-full">
-                Importer {resolved.summary.ok + resolved.summary.warning} produit{resolved.summary.ok + resolved.summary.warning > 1 ? "s" : ""}
+              <button onClick={() => setStep("mapping")} disabled={importPending} className="flex-1 py-3 rounded-full font-semibold text-sm disabled:opacity-40" style={{ border: `1px solid ${p.borderStrong}`, color: p.text }}>Revoir le mapping</button>
+              <NeonButton onClick={confirmImport} disabled={resolved.summary.ok + resolved.summary.warning === 0 || importPending} className="flex-1 py-3 rounded-full flex items-center justify-center gap-2">
+                {importPending ? <><Loader2 size={16} className="animate-spin" /> Import en cours…</> : <>Importer {resolved.summary.ok + resolved.summary.warning} produit{resolved.summary.ok + resolved.summary.warning > 1 ? "s" : ""}</>}
               </NeonButton>
             </div>
           </div>
         )}
+
 
         {step === "done" && result && (
           <div className="text-center py-6">
@@ -1966,23 +2030,51 @@ function AdminProducts({ products, setProducts, brands, setBrands, suppliers, se
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState("");
   const [importOpen, setImportOpen] = useState(false);
+  const [error, setError] = useState("");
 
   const filtered = products.filter((pr) => {
     const brand = brands.find((b) => b.id === pr.brandId)?.name || "";
     return `${pr.name} ${brand}`.toLowerCase().includes(search.toLowerCase());
   });
 
-  const save = (form) => {
-    if (editing) setProducts((ps) => ps.map((pr) => (pr.id === editing.id ? { ...form, id: editing.id } : pr)));
-    else setProducts((ps) => [...ps, { ...form, id: newId("p") }]);
-    setFormOpen(false); setEditing(null);
+  const save = async (form) => {
+    setError("");
+    try {
+      if (editing) {
+        const updated = await dbUpdateProduct({ ...form, id: editing.id });
+        setProducts((ps) => ps.map((pr) => (pr.id === editing.id ? updated : pr)));
+      } else {
+        const created = await dbCreateProduct({ ...form, id: newId("p") });
+        setProducts((ps) => [...ps, created]);
+      }
+      setFormOpen(false); setEditing(null);
+    } catch (err) {
+      setError(err.message || "Échec de l'enregistrement.");
+    }
   };
-  const remove = (id) => setProducts((ps) => ps.filter((pr) => pr.id !== id));
+  const remove = async (id) => {
+    setError("");
+    try {
+      await dbDeleteProduct(id);
+      setProducts((ps) => ps.filter((pr) => pr.id !== id));
+    } catch (err) {
+      setError(err.message || "Échec de la suppression.");
+    }
+  };
 
-  const handleImport = ({ newProducts, newBrands, newSuppliers }) => {
-    if (newBrands.length) setBrands((bs) => [...bs, ...newBrands]);
-    if (newSuppliers.length) setSuppliers((ss) => [...ss, ...newSuppliers]);
-    setProducts((ps) => [...ps, ...newProducts]);
+  // Persists the whole import batch to Supabase (new brands/suppliers first, so products can
+  // reference their ids via foreign key, then the products themselves) before updating local state.
+  const handleImport = async ({ newProducts, newBrands, newSuppliers }) => {
+    if (newBrands.length) {
+      const createdBrands = await dbCreateBrands(newBrands);
+      setBrands((bs) => [...bs, ...createdBrands]);
+    }
+    if (newSuppliers.length) {
+      const createdSuppliers = await dbCreateSuppliers(newSuppliers);
+      setSuppliers((ss) => [...ss, ...createdSuppliers]);
+    }
+    const createdProducts = await dbCreateProducts(newProducts);
+    setProducts((ps) => [...ps, ...createdProducts]);
   };
 
   return (
@@ -1999,6 +2091,7 @@ function AdminProducts({ products, setProducts, brands, setBrands, suppliers, se
           </div>
         }
       />
+      {error && <p className="text-sm mb-4" style={{ color: NEG }}>{error}</p>}
       <div className="mb-5 flex items-center gap-2 rounded-full px-4 py-2.5 max-w-sm" style={{ background: p.bg2, border: `1px solid ${p.border}` }}>
         <Search size={15} style={{ color: p.steel }} />
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher…" className="flex-1 outline-none text-sm bg-transparent" style={{ color: p.text }} />
@@ -2006,10 +2099,10 @@ function AdminProducts({ products, setProducts, brands, setBrands, suppliers, se
 
       <div className="rounded-2xl overflow-hidden" style={{ background: p.bg2, border: `1px solid ${p.border}` }}>
         <div className="overflow-x-auto scroll-thin">
-          <table className="w-full text-sm min-w-[820px]">
+          <table className="w-full text-sm min-w-[880px]">
             <thead>
               <tr className="text-left" style={{ background: p.bg3 }}>
-                {["Produit", "Catégorie", "Prix", "Coût", "Marge", "Fournisseur", "Stock", ""].map((h) => (
+                {["", "Produit", "Catégorie", "Prix", "Coût", "Marge", "Fournisseur", "Stock", ""].map((h) => (
                   <th key={h} className="px-4 py-3 mtr-mono text-[11px] uppercase tracking-wide" style={{ color: p.steel }}>{h}</th>
                 ))}
               </tr>
@@ -2021,6 +2114,11 @@ function AdminProducts({ products, setProducts, brands, setBrands, suppliers, se
                 const margin = Math.round(((pr.price - pr.cost) / pr.price) * 100);
                 return (
                   <tr key={pr.id} className="border-t" style={{ borderColor: p.border }}>
+                    <td className="px-4 py-3">
+                      <div className="w-11 h-9 rounded-md overflow-hidden flex items-center justify-center" style={{ background: p.bg3 }}>
+                        <ProductVisual product={pr} stroke={alpha(p.text, 0.5)} />
+                      </div>
+                    </td>
                     <td className="px-4 py-3">
                       <div className="font-semibold" style={{ color: p.text }}>{pr.name}</div>
                       <div className="text-xs mtr-mono" style={{ color: BRAND_ACCENT[pr.brandId] || PRIMARY }}>{brand?.name}</div>
@@ -2086,16 +2184,37 @@ function AdminBrands({ brands, setBrands, products }) {
   const { p } = useTheme();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const save = (form) => {
-    if (editing) setBrands((bs) => bs.map((b) => (b.id === editing.id ? { ...form, id: editing.id } : b)));
-    else setBrands((bs) => [...bs, { ...form, id: newId("b") }]);
-    setFormOpen(false); setEditing(null);
+  const [error, setError] = useState("");
+
+  const save = async (form) => {
+    setError("");
+    try {
+      if (editing) {
+        const updated = await dbUpdateBrand({ ...form, id: editing.id });
+        setBrands((bs) => bs.map((b) => (b.id === editing.id ? updated : b)));
+      } else {
+        const created = await dbCreateBrand({ ...form, id: newId("b") });
+        setBrands((bs) => [...bs, created]);
+      }
+      setFormOpen(false); setEditing(null);
+    } catch (err) {
+      setError(err.message || "Échec de l'enregistrement.");
+    }
   };
-  const remove = (id) => setBrands((bs) => bs.filter((b) => b.id !== id));
+  const remove = async (id) => {
+    setError("");
+    try {
+      await dbDeleteBrand(id);
+      setBrands((bs) => bs.filter((b) => b.id !== id));
+    } catch (err) {
+      setError(err.message || "Échec de la suppression.");
+    }
+  };
 
   return (
     <div>
       <AdminHeader title="Marques" subtitle="Maisons référencées sur la boutique." action={<button onClick={() => { setEditing(null); setFormOpen(true); }} className="btn-magnet flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold" style={{ background: p.text, color: p.bg }}><Plus size={15} /> Ajouter une marque</button>} />
+      {error && <p className="text-sm mb-4" style={{ color: NEG }}>{error}</p>}
       <div className="grid md:grid-cols-2 gap-4">
         {brands.map((b) => {
           const count = products.filter((pr) => pr.brandId === b.id).length;
@@ -2175,16 +2294,37 @@ function AdminSuppliers({ suppliers, setSuppliers, brands }) {
   const { p } = useTheme();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const save = (form) => {
-    if (editing) setSuppliers((ss) => ss.map((s) => (s.id === editing.id ? { ...form, id: editing.id } : s)));
-    else setSuppliers((ss) => [...ss, { ...form, id: newId("s") }]);
-    setFormOpen(false); setEditing(null);
+  const [error, setError] = useState("");
+
+  const save = async (form) => {
+    setError("");
+    try {
+      if (editing) {
+        const updated = await dbUpdateSupplier({ ...form, id: editing.id });
+        setSuppliers((ss) => ss.map((s) => (s.id === editing.id ? updated : s)));
+      } else {
+        const created = await dbCreateSupplier({ ...form, id: newId("s") });
+        setSuppliers((ss) => [...ss, created]);
+      }
+      setFormOpen(false); setEditing(null);
+    } catch (err) {
+      setError(err.message || "Échec de l'enregistrement.");
+    }
   };
-  const remove = (id) => setSuppliers((ss) => ss.filter((s) => s.id !== id));
+  const remove = async (id) => {
+    setError("");
+    try {
+      await dbDeleteSupplier(id);
+      setSuppliers((ss) => ss.filter((s) => s.id !== id));
+    } catch (err) {
+      setError(err.message || "Échec de la suppression.");
+    }
+  };
 
   return (
     <div>
       <AdminHeader title="Fournisseurs" subtitle="Grossistes en dropshipping associés à la boutique." action={<button onClick={() => { setEditing(null); setFormOpen(true); }} className="btn-magnet flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold" style={{ background: p.text, color: p.bg }}><Plus size={15} /> Ajouter un fournisseur</button>} />
+      {error && <p className="text-sm mb-4" style={{ color: NEG }}>{error}</p>}
       <div className="grid md:grid-cols-2 gap-4">
         {suppliers.map((s) => (
           <div key={s.id} className="p-5 rounded-2xl card-lift" style={{ background: p.bg2, border: `1px solid ${p.border}` }}>
@@ -2222,14 +2362,34 @@ function AdminSuppliers({ suppliers, setSuppliers, brands }) {
 function AdminOrders({ orders, setOrders, products }) {
   const { p } = useTheme();
   const statuses = ["En attente", "Expédiée", "Livrée", "Annulée"];
-  const setStatus = (id, status) => setOrders((os) => os.map((o) => (o.id === id ? { ...o, status } : o)));
-  const remove = (id) => setOrders((os) => os.filter((o) => o.id !== id));
+  const [error, setError] = useState("");
+  const setStatus = async (id, status) => {
+    setError("");
+    const prev = orders;
+    setOrders((os) => os.map((o) => (o.id === id ? { ...o, status } : o))); // optimistic
+    try {
+      await dbUpdateOrderStatus(id, status);
+    } catch (err) {
+      setOrders(prev);
+      setError(err.message || "Échec de la mise à jour du statut.");
+    }
+  };
+  const remove = async (id) => {
+    setError("");
+    try {
+      await dbDeleteOrder(id);
+      setOrders((os) => os.filter((o) => o.id !== id));
+    } catch (err) {
+      setError(err.message || "Échec de la suppression.");
+    }
+  };
   const total = (o) => o.items.reduce((s, it) => s + (products.find((pr) => pr.id === it.productId)?.price || 0) * it.qty, 0);
   const statusColor = (s) => ({ "En attente": NEON.orange, "Expédiée": NEON.cyan, "Livrée": NEON.lime, "Annulée": NEG }[s] || p.steel);
 
   return (
     <div>
       <AdminHeader title="Commandes" subtitle={`${orders.length} commande${orders.length > 1 ? "s" : ""} enregistrée${orders.length > 1 ? "s" : ""}`} />
+      {error && <p className="text-sm mb-4" style={{ color: NEG }}>{error}</p>}
       <div className="rounded-2xl overflow-hidden" style={{ background: p.bg2, border: `1px solid ${p.border}` }}>
         <div className="overflow-x-auto scroll-thin">
           <table className="w-full text-sm min-w-[720px]">
@@ -2274,18 +2434,44 @@ function Root() {
   const [mode, setMode] = useState("site");
   const [page, setPage] = useState("home");
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [adminAuthed, setAdminAuthed] = useState(false);
+  const [session, setSession] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [adminTab, setAdminTab] = useState("dashboard");
 
-  const [products, setProducts] = useState(PRODUCTS_SEED);
-  const [brands, setBrands] = useState(BRANDS_SEED);
-  const [suppliers, setSuppliers] = useState(SUPPLIERS_SEED);
-  const [orders, setOrders] = useState(ORDERS_SEED);
+  const [products, setProducts] = useState([]);
+  const [brands, setBrands] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
 
   const [cart, setCart] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [activeProduct, setActiveProduct] = useState(null);
+
+  // Initial data load from Supabase.
+  useEffect(() => {
+    let cancelled = false;
+    fetchAllData()
+      .then((data) => {
+        if (cancelled) return;
+        setProducts(data.products);
+        setBrands(data.brands);
+        setSuppliers(data.suppliers);
+        setOrders(data.orders);
+      })
+      .catch((err) => { if (!cancelled) setLoadError(err.message || "Erreur de connexion à la base de données."); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Auth session (persists across reloads while the Supabase session is valid).
+  useEffect(() => {
+    getSession().then((s) => { setSession(s); setAuthChecked(true); }).catch(() => setAuthChecked(true));
+    const unsubscribe = onAuthChange((s) => setSession(s));
+    return unsubscribe;
+  }, []);
 
   const addToCart = (product, qty) => {
     setCart((c) => {
@@ -2299,22 +2485,46 @@ function Root() {
   const removeItem = (productId) => setCart((c) => c.filter((i) => i.productId !== productId));
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
 
-  const confirmOrder = (form) => {
+  const confirmOrder = async (form) => {
     const newOrder = { id: newId("o"), client: form.name, email: form.email, date: new Date().toLocaleDateString("fr-FR"), items: cart.map((c) => ({ productId: c.productId, qty: c.qty })), status: "En attente" };
+    await dbCreateOrder(newOrder); // throws on failure — CheckoutModal shows the error and keeps the cart intact
     setOrders((os) => [newOrder, ...os]);
     setCart([]);
   };
 
   const goAdmin = () => { setMode("admin"); setCartOpen(false); };
   const backToSite = () => setMode("site");
+  const handleLogin = async (email, password) => { await signIn(email, password); };
+  const handleLogout = async () => { await signOut(); };
+
+  if (loading || !authChecked) {
+    return (
+      <div className="mtr grain flex items-center justify-center" style={{ background: p.bg, minHeight: "100vh" }}>
+        <Loader2 size={28} className="animate-spin" style={{ color: PRIMARY }} />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="mtr grain flex items-center justify-center px-6" style={{ background: p.bg, minHeight: "100vh" }}>
+        <div className="max-w-md text-center">
+          <AlertTriangle size={28} className="mx-auto mb-4" style={{ color: NEG }} />
+          <h2 className="mtr-display text-xl font-bold mb-2" style={{ color: p.text }}>Connexion à la base impossible</h2>
+          <p className="text-sm" style={{ color: p.steel }}>{loadError}</p>
+          <p className="text-xs mt-3" style={{ color: p.steel }}>Vérifiez VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY et que le schéma SQL a bien été exécuté.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (mode === "admin") {
-    if (!adminAuthed) {
-      return <div className="mtr grain" style={{ background: p.bg, minHeight: "100vh" }}><AdminLogin onLogin={() => setAdminAuthed(true)} onBackToSite={backToSite} /></div>;
+    if (!session) {
+      return <div className="mtr grain" style={{ background: p.bg, minHeight: "100vh" }}><AdminLogin onLogin={handleLogin} onBackToSite={backToSite} /></div>;
     }
     return (
       <div className="mtr grain" style={{ background: p.bg, minHeight: "100vh" }}>
-        <AdminShell tab={adminTab} setTab={setAdminTab} onLogout={() => setAdminAuthed(false)} onBackToSite={backToSite}>
+        <AdminShell tab={adminTab} setTab={setAdminTab} onLogout={handleLogout} onBackToSite={backToSite}>
           {adminTab === "dashboard" && <AdminDashboard products={products} orders={orders} brands={brands} />}
           {adminTab === "products" && <AdminProducts products={products} setProducts={setProducts} brands={brands} setBrands={setBrands} suppliers={suppliers} setSuppliers={setSuppliers} />}
           {adminTab === "brands" && <AdminBrands brands={brands} setBrands={setBrands} products={products} />}
