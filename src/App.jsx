@@ -635,6 +635,14 @@ function PriceTag({ price, compareAt, className = "font-bold", color }) {
   );
 }
 
+function ShippingBadge({ size = 11 }) {
+  return (
+    <span className="mtr-mono inline-flex items-center gap-1 font-bold uppercase tracking-wide" style={{ fontSize: size, color: NEON.lime }}>
+      <Truck size={size + 2} /> Livraison incluse
+    </span>
+  );
+}
+
 function NeonButton({ children, onClick, disabled, className = "", c1 = NEON.cyan, c2 = NEON.pink }) {
   return (
     <button onClick={onClick} disabled={disabled} className={`btn-neon btn-magnet font-semibold text-sm disabled:opacity-40 disabled:animate-none ${className}`} style={{ "--c1": c1, "--c2": c2, "--glow": alpha(c1, 0.55) }}>
@@ -673,7 +681,7 @@ function AnnounceBar() {
         <div className="mesh-blob" style={{ width: 260, height: 260, top: -110, right: "8%", background: NEON.pink, opacity: 0.2, mixBlendMode: "screen", animationDelay: "-8s" }} />
       </div>
       <p className="relative mtr-mono announce-text text-[11px] md:text-xs font-bold uppercase tracking-[0.16em] px-4">
-        ⚡ Prix imbattables sur toute la sélection · Livraison suivie · Retours 30 jours ⚡
+        🚚 Livraison incluse sur tout le catalogue · Prix imbattables · Retours 30 jours 🚚
       </p>
     </div>
   );
@@ -815,6 +823,7 @@ function Hero({ setPage, featured, brands, onOpenProduct }) {
               <span className="mtr-display font-bold text-base md:text-lg truncate" style={{ color: p.text }}>{featuredBrand?.name} — {featured.name}</span>
               <span className="mtr-display font-bold text-base md:text-lg inline-flex items-center gap-1.5 shrink-0"><PriceTag price={featured.price} compareAt={featured.compareAtPrice} className="font-bold" color={NEON.cyan} /></span>
             </div>
+            <div className="relative mt-1.5"><ShippingBadge /></div>
           </button>
         ) : (
           <div style={{ "--edge": NEON.cyan }} className="neon-border relative rounded-3xl p-6 md:p-10">
@@ -1012,6 +1021,7 @@ function ProductCard({ product, brand, onOpen, index = 0 }) {
             <PriceTag price={product.price} compareAt={product.compareAtPrice} className="font-bold" />
             {product.stock !== "En stock" && <Pill style={{ background: alpha(NEG, 0.14), color: NEG }}>{product.stock}</Pill>}
           </div>
+          <div className="mt-1.5"><ShippingBadge size={10} /></div>
         </div>
       </button>
     </div>
@@ -1344,6 +1354,7 @@ function ProductModal({ product, brand, onClose, onAddToCart }) {
             <div className="mtr-mono text-xs uppercase tracking-[0.14em]" style={{ color: accent }}>{brand?.name}</div>
             <h2 className="mtr-display text-2xl font-bold mt-1" style={{ color: p.text }}>{product.name}</h2>
             <div className="mt-3"><PriceTag price={product.price} compareAt={product.compareAtPrice} className="text-2xl font-extrabold" /></div>
+            <div className="mt-2"><ShippingBadge /></div>
             {product.description && <p className="mt-3 text-sm" style={{ color: alpha(p.text, 0.65) }}>{product.description}</p>}
             <div className="mt-6">
               <SpecRow label="Calibre" value={product.calibre} />
