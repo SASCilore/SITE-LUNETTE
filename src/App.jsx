@@ -1705,11 +1705,11 @@ const IMPORT_FIELD_DEFS = [
   { id: "shape", label: "Forme", aliases: ["forme", "shape"], required: false },
   { id: "stock", label: "Stock", aliases: ["stock", "disponibilite", "disponibilité", "statut"], required: false },
   { id: "supplierName", label: "Fournisseur", aliases: ["fournisseur", "supplier"], required: false },
-  { id: "photo1", label: "Photo 1 (URL)", aliases: ["photo", "photo 1", "photo1", "image", "image 1", "image1", "photo url"], required: false },
-  { id: "photo2", label: "Photo 2 (URL)", aliases: ["photo 2", "photo2", "image 2", "image2"], required: false },
-  { id: "photo3", label: "Photo 3 (URL)", aliases: ["photo 3", "photo3", "image 3", "image3"], required: false },
-  { id: "photo4", label: "Photo 4 (URL)", aliases: ["photo 4", "photo4", "image 4", "image4"], required: false },
-  { id: "photo5", label: "Photo 5 (URL)", aliases: ["photo 5", "photo5", "image 5", "image5"], required: false },
+  { id: "photo1", label: "Photo 1 (URL)", aliases: ["photo", "photo 1", "photo1", "image", "image 1", "image1", "photo url", "url image", "url image 1", "lien image 1", "lien photo 1", "photo produit 1", "visuel 1"], required: false },
+  { id: "photo2", label: "Photo 2 (URL)", aliases: ["photo 2", "photo2", "image 2", "image2", "url image 2", "lien image 2", "lien photo 2", "photo produit 2", "visuel 2"], required: false },
+  { id: "photo3", label: "Photo 3 (URL)", aliases: ["photo 3", "photo3", "image 3", "image3", "url image 3", "lien image 3", "lien photo 3", "photo produit 3", "visuel 3"], required: false },
+  { id: "photo4", label: "Photo 4 (URL)", aliases: ["photo 4", "photo4", "image 4", "image4", "url image 4", "lien image 4", "lien photo 4", "photo produit 4", "visuel 4"], required: false },
+  { id: "photo5", label: "Photo 5 (URL)", aliases: ["photo 5", "photo5", "image 5", "image5", "url image 5", "lien image 5", "lien photo 5", "photo produit 5", "visuel 5"], required: false },
   { id: "description", label: "Description", aliases: ["description", "desc"], required: false },
 ];
 
@@ -2060,11 +2060,21 @@ function ImportWizard({ open, onClose, brands, suppliers, onImport }) {
               {resolved.newBrands.length > 0 && <Pill style={{ background: p.bg3, color: p.steel }}>+{resolved.newBrands.length} nouvelle{resolved.newBrands.length > 1 ? "s" : ""} marque{resolved.newBrands.length > 1 ? "s" : ""}</Pill>}
               {resolved.newSuppliers.length > 0 && <Pill style={{ background: p.bg3, color: p.steel }}>+{resolved.newSuppliers.length} nouveau{resolved.newSuppliers.length > 1 ? "x" : ""} fournisseur{resolved.newSuppliers.length > 1 ? "s" : ""}</Pill>}
             </div>
+            {resolved.rows.every((r) => !r.photos || r.photos.length === 0) && (
+              <div className="flex items-start gap-2.5 p-3.5 rounded-xl mb-4" style={{ background: alpha(NEON.yellow, 0.12), border: `1px solid ${alpha(NEON.yellow, 0.4)}` }}>
+                <AlertTriangle size={16} style={{ color: "#8a7d00" }} className="shrink-0 mt-0.5" />
+                <p className="text-sm" style={{ color: p.text }}>
+                  Aucune photo détectée sur l'ensemble du fichier. Si vos colonnes contiennent bien des images,
+                  retournez à l'étape précédente et vérifiez que <strong>Photo 1</strong> à <strong>Photo 5</strong> sont
+                  associées aux bonnes colonnes (pas sur "— Ignorer —").
+                </p>
+              </div>
+            )}
             <div className="rounded-xl overflow-hidden max-h-[42vh] overflow-y-auto" style={{ border: `1px solid ${p.border}` }}>
               <table className="w-full text-sm">
                 <thead className="sticky top-0" style={{ background: p.bg3 }}>
                   <tr className="text-left">
-                    {["", "Titre", "Marque", "Prix", "Détails"].map((h) => (
+                    {["", "Titre", "Marque", "Prix", "Photos", "Détails"].map((h) => (
                       <th key={h} className="px-3 py-2 mtr-mono text-[10px] uppercase tracking-wide" style={{ color: p.steel }}>{h}</th>
                     ))}
                   </tr>
@@ -2076,6 +2086,13 @@ function ImportWizard({ open, onClose, brands, suppliers, onImport }) {
                       <td className="px-3 py-2 font-medium" style={{ color: p.text }}>{r.name || "—"}</td>
                       <td className="px-3 py-2" style={{ color: p.steel }}>{r.brandNameRaw || "—"}</td>
                       <td className="px-3 py-2" style={{ color: p.text }}>{r.price ? euro(r.price) : "—"}</td>
+                      <td className="px-3 py-2">
+                        {r.photos && r.photos.length > 0 ? (
+                          <span className="inline-flex items-center gap-1" style={{ color: NEON.lime }}><ImageIcon size={12} /> {r.photos.length}</span>
+                        ) : (
+                          <span style={{ color: p.steel }}>—</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-xs" style={{ color: p.steel }}>{r.messages.join(" · ") || "—"}</td>
                     </tr>
                   ))}
