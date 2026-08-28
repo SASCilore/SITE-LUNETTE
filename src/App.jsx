@@ -940,7 +940,7 @@ function ScrollGlassesStory({ featured }) {
   );
 }
 
-function CategoryStrip({ onGoCategory }) {
+function CategoryStrip({ onGoCategory, categoryProducts }) {
   const { p, dark } = useTheme();
   const [ref, visible] = useReveal(0.2);
   const tiles = [
@@ -950,29 +950,42 @@ function CategoryStrip({ onGoCategory }) {
     { category: "Optique", gender: "Homme", label: "Vue Homme", accent: NEON.yellow },
   ];
   return (
-    <section style={{ background: p.bg2 }} className="py-14 md:py-16">
+    <section style={{ background: p.bg2 }} className="py-16 md:py-20">
       <div ref={ref} className={`reveal ${visible ? "visible" : ""} max-w-6xl mx-auto px-5 md:px-8`}>
         <Eyebrow>Parcourir par catégorie</Eyebrow>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-          {tiles.map((t, i) => (
-            <button
-              key={t.label}
-              onClick={() => onGoCategory(t.category, t.gender)}
-              className="neon-border card-lift group relative rounded-2xl p-6 text-left overflow-hidden"
-              style={{ background: p.bg, border: `1px solid ${dark ? p.border : alpha(t.accent, 0.35)}`, "--edge": t.accent }}
-            >
-              <div className="mesh-bg">
-                <div className="mesh-blob" style={{ width: 160, height: 160, top: -60, right: -50, background: t.accent, opacity: dark ? 0.18 : 0.35, mixBlendMode: dark ? "screen" : "multiply" }} />
-              </div>
-              <div className="relative">
-                <div className="mtr-mono text-[10px] uppercase tracking-wide mb-2" style={{ color: t.accent }}>0{i + 1}</div>
-                <div className="mtr-display font-extrabold text-lg md:text-xl leading-tight" style={{ color: p.text }}>{t.label}</div>
-                <div className="mt-3 inline-flex items-center gap-1 text-xs font-semibold transition-transform group-hover:translate-x-1" style={{ color: t.accent }}>
-                  Voir la sélection <ArrowRight size={13} />
+        <h2 className="mtr-display text-3xl md:text-4xl font-bold mb-6" style={{ color: p.text }}>Quatre univers, un catalogue</h2>
+        <div className="grid grid-cols-2 gap-4 md:gap-6">
+          {tiles.map((t, i) => {
+            const key = `${t.category}_${t.gender}`;
+            const product = categoryProducts?.[key];
+            return (
+              <button
+                key={t.label}
+                onClick={() => onGoCategory(t.category, t.gender)}
+                className="neon-border card-lift group relative rounded-3xl text-left overflow-hidden"
+                style={{ background: p.bg, border: `1px solid ${dark ? p.border : alpha(t.accent, 0.35)}`, "--edge": t.accent, height: "clamp(220px, 32vw, 340px)" }}
+              >
+                <div className="mesh-bg">
+                  <div className="mesh-blob" style={{ width: 260, height: 260, top: -80, right: -60, background: t.accent, opacity: dark ? 0.22 : 0.4, mixBlendMode: dark ? "screen" : "multiply" }} />
                 </div>
-              </div>
-            </button>
-          ))}
+                {product?.photos?.[0] && (
+                  <img
+                    src={product.photos[0]}
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-contain p-6 md:p-10 transition-transform duration-500 group-hover:scale-105"
+                    style={{ opacity: 0.95 }}
+                  />
+                )}
+                <div className="absolute inset-x-0 bottom-0 p-5 md:p-7" style={{ background: `linear-gradient(to top, ${alpha(p.bg, 0.92)}, ${alpha(p.bg, 0.55)} 60%, transparent)` }}>
+                  <div className="mtr-mono text-[10px] uppercase tracking-wide mb-1.5" style={{ color: t.accent }}>0{i + 1}</div>
+                  <div className="mtr-display font-extrabold leading-tight" style={{ color: p.text, fontSize: "clamp(1.25rem, 2.4vw, 1.75rem)" }}>{t.label}</div>
+                  <div className="mt-2 inline-flex items-center gap-1.5 text-sm font-bold transition-transform group-hover:translate-x-1" style={{ color: t.accent }}>
+                    Découvrir ma paire <ArrowRight size={15} />
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
     </section>
@@ -3143,6 +3156,21 @@ function Root() {
   }
   const featuredProduct = featuredRef.current || null;
 
+  // Same "pick once per visit" pattern as featuredProduct, one random (photo-bearing) product per
+  // category/gender tile, so the category banner feels alive without flickering mid-session.
+  const categoryProductsRef = useRef(undefined);
+  if (categoryProductsRef.current === undefined && products.length > 0) {
+    const combos = [["Solaire", "Femme"], ["Optique", "Femme"], ["Solaire", "Homme"], ["Optique", "Homme"]];
+    const map = {};
+    combos.forEach(([category, gender]) => {
+      const matches = products.filter((pr) => pr.category === category && pr.gender === gender && pr.photos && pr.photos.length > 0);
+      const fallback = matches.length ? matches : products.filter((pr) => pr.category === category && pr.photos && pr.photos.length > 0);
+      map[`${category}_${gender}`] = fallback.length ? fallback[Math.floor(Math.random() * fallback.length)] : null;
+    });
+    categoryProductsRef.current = map;
+  }
+  const categoryProducts = categoryProductsRef.current || {};
+
   // Real signals computed from actual data — never invented. Only *paid* orders count toward
   // "best-seller" so it can't be inflated by abandoned/pending carts, and "low stock" only shows
   // when a real stock_quantity has been set on the product in the admin (no fake scarcity).
@@ -3390,7 +3418,7 @@ function Root() {
         <>
           <Hero setPage={goPage} featured={featuredProduct} brands={brands} onOpenProduct={setActiveProduct} />
           <ScrollGlassesStory featured={featuredProduct} />
-          <CategoryStrip onGoCategory={goCategory} />
+          <CategoryStrip onGoCategory={goCategory} categoryProducts={categoryProducts} />
           <LensRevealBrands brands={brands} setPage={goPage} />
           <ProductRail
             title="Verres holographiques à la une"
