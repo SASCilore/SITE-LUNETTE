@@ -53,6 +53,8 @@ const rowToProduct = (r) => ({
   supplierId: r.supplier_id, featured: !!r.featured, description: cleanDescription(r.description || ""),
   photos: (r.photo_urls && r.photo_urls.length ? r.photo_urls : (r.photo_url ? [r.photo_url] : [])),
   compareAtPrice: r.compare_at_price !== null && r.compare_at_price !== undefined ? Number(r.compare_at_price) : null,
+  createdAt: r.created_at || null,
+  stockQuantity: r.stock_quantity !== null && r.stock_quantity !== undefined ? Number(r.stock_quantity) : null,
 });
 const productToRow = (p) => ({
   id: p.id, name: p.name, brand_id: p.brandId, category: p.category, gender: p.gender,
@@ -61,6 +63,7 @@ const productToRow = (p) => ({
   featured: p.featured, description: p.description,
   photo_urls: p.photos || [], photo_url: (p.photos && p.photos[0]) || "",
   compare_at_price: p.compareAtPrice || null,
+  stock_quantity: p.stockQuantity === "" || p.stockQuantity === undefined ? null : p.stockQuantity,
 });
 
 const rowToOrder = (r) => ({
@@ -202,7 +205,7 @@ export async function signIn(email, password) {
 export async function signUp(email, password) {
   const { data, error } = await supabase.auth.signUp({ email, password });
   if (error) throw error;
-  return data.session; // null if the project requires e-mail confirmation before sign-in
+  return data.session;
 }
 export async function signOut() {
   await supabase.auth.signOut();
@@ -222,6 +225,7 @@ const rowToProfile = (r) => ({
   id: r.id, email: r.email || "", role: r.role || "customer", fullName: r.full_name || "",
   phone: r.phone || "", addressLine1: r.address_line1 || "", addressLine2: r.address_line2 || "",
   city: r.city || "", postalCode: r.postal_code || "", country: r.country || "France",
+  loyaltyPoints: r.loyalty_points || 0,
 });
 
 export async function getProfile(userId) {
@@ -250,4 +254,47 @@ export async function createStripeCheckout({ orderId, items, customerEmail }) {
   if (error) throw error;
   if (!data?.url) throw new Error("Session de paiement introuvable.");
   return data.url;
+}
+
+/* ---------------------------------- WISHLIST ---------------------------------- */
+
+export async function fetchWishlist(userId) {
+  const { data, error } = await supabase.from("wishlist_items").select("product_id").eq("user_id", userId);
+  if (error) throw error;
+  return (data || []).map((r) => r.product_id);
+}
+export async function addToWishlist(userId, productId) {
+  const { error } = await supabase.from("wishlist_items").insert({ user_id: userId, product_id: productId });
+  if (error && error.code !== "23505") throw error;
+}
+export async function removeFromWishlist(userId, productId) {
+  const { error } = await supabase.from("wishlist_items").delete().eq("user_id", userId).eq("product_id", productId);
+  if (error) throw error;
+}
+
+/* ---------------------------------- REVIEWS ---------------------------------- */
+
+const rowToReview = (r) => ({
+  id: r.id, productId: r.product_id, userId: r.user_id, authorName: r.author_name || "Client",
+  rating: r.rating, comment: r.comment || "", createdAt: r.created_at,
+});
+
+export async function fetchReviews(productId) {
+  const { data, error } = await supabase.from("reviews").select("*").eq("product_id", productId).order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data || []).map(rowToReview);
+}
+export async function fetchAllReviews() {
+  const { data, error } = await supabase.from("reviews").select("*");
+  if (error) throw error;
+  return (data || []).map(rowToReview);
+}
+export async function upsertReview({ productId, userId, authorName, rating, comment }) {
+  const { data, error } = await supabase
+    .from("reviews")
+    .upsert({ product_id: productId, user_id: userId, author_name: authorName, rating, comment }, { onConflict: "product_id,user_id" })
+    .select()
+    .single();
+  if (error) throw error;
+  return rowToReview(data);
 }
