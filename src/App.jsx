@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Package, Tags, Truck, ClipboardList, LogOut,
   Trash2, Pencil, Check, ArrowRight, Menu, Filter, ArrowLeft, Building2, Sparkles, Sun, Moon,
   Upload, FileSpreadsheet, Download, AlertTriangle, CheckCircle2, XCircle, Image as ImageIcon, Loader2,
-  User, MapPin, CreditCard, LogIn, UserPlus,
+  User, MapPin, CreditCard, LogIn, UserPlus, Heart, Star,
 } from "lucide-react";
 import {
   fetchAllData, dbCreateBrand, dbCreateBrands, dbUpdateBrand, dbDeleteBrand,
@@ -16,6 +16,8 @@ import {
   dbCreateOrder, dbUpdateOrderStatus, dbDeleteOrder,
   uploadProductPhoto, signIn, signUp, signOut, getSession, onAuthChange,
   getProfile, upsertProfile, createStripeCheckout,
+  fetchWishlist, addToWishlist, removeFromWishlist,
+  fetchReviews, fetchAllReviews, upsertReview,
 } from "./lib/supabase.js";
 
 /* ---------------------------------- THEME ---------------------------------- */
@@ -645,6 +647,19 @@ function ShippingBadge({ size = 11 }) {
   );
 }
 
+// Renders only badges backed by real data — no invented numbers. `insights` comes from
+// productInsights in Root (computed from actual paid orders / creation date / real stock count).
+function ProductBadges({ insights, className = "" }) {
+  if (!insights) return null;
+  return (
+    <div className={`flex flex-wrap gap-1.5 ${className}`}>
+      {insights.isBestSeller && <Pill style={{ background: alpha(NEON.orange, 0.16), color: NEON.orange }}>★ Best-seller</Pill>}
+      {insights.isNew && <Pill style={{ background: alpha(NEON.blue, 0.16), color: NEON.blue }}>Nouveau</Pill>}
+      {insights.lowStock && <Pill style={{ background: alpha(NEG, 0.16), color: NEG }}>Plus que {insights.stockQuantity} en stock</Pill>}
+    </div>
+  );
+}
+
 function NeonButton({ children, onClick, disabled, className = "", c1 = NEON.cyan, c2 = NEON.pink }) {
   return (
     <button onClick={onClick} disabled={disabled} className={`btn-neon btn-magnet font-semibold text-sm disabled:opacity-40 disabled:animate-none ${className}`} style={{ "--c1": c1, "--c2": c2, "--glow": alpha(c1, 0.55) }}>
@@ -689,7 +704,7 @@ function AnnounceBar() {
   );
 }
 
-function SiteHeader({ page, setPage, onGoCategory, cartCount, onOpenCart, onGoAdmin, mobileOpen, setMobileOpen }) {
+function SiteHeader({ page, setPage, onGoCategory, cartCount, onOpenCart, onGoAdmin, mobileOpen, setMobileOpen, session, loyaltyPoints, wishlistCount, onOpenWishlist }) {
   const { p } = useTheme();
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
@@ -732,7 +747,16 @@ function SiteHeader({ page, setPage, onGoCategory, cartCount, onOpenCart, onGoAd
         </nav>
         <div className="flex items-center gap-3 shrink-0">
           <div className="hidden lg:block"><ThemeToggle compact /></div>
+          {session && (
+            <span className="hidden md:inline-flex items-center gap-1.5 mtr-mono text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: alpha(NEON.orange, 0.14), color: NEON.orange }}>
+              <Sparkles size={12} /> {loyaltyPoints} pts
+            </span>
+          )}
           <button onClick={onGoAdmin} className="hidden lg:block text-xs mtr-mono uppercase tracking-wide" style={{ color: alpha(p.text, 0.4) }}>Espace pro</button>
+          <button onClick={onOpenWishlist} className="btn-magnet relative p-2.5 rounded-full" style={{ color: p.text, background: alpha(p.text, 0.06) }} aria-label="Liste d'envies">
+            <Heart size={19} />
+            {wishlistCount > 0 && <span className="absolute -top-1 -right-1 text-[10px] w-4.5 h-4.5 min-w-[18px] min-h-[18px] rounded-full flex items-center justify-center font-bold" style={{ background: NEON.pink, color: "#07080A" }}>{wishlistCount}</span>}
+          </button>
           <button onClick={onOpenCart} className="btn-magnet relative p-2.5 rounded-full" style={{ color: p.text, background: alpha(p.text, 0.06) }} aria-label="Ouvrir le panier">
             <ShoppingBag size={19} />
             {cartCount > 0 && <span className="absolute -top-1 -right-1 text-[10px] w-4.5 h-4.5 min-w-[18px] min-h-[18px] rounded-full flex items-center justify-center font-bold" style={{ background: PRIMARY, color: "#07080A", boxShadow: `0 0 10px ${PRIMARY}` }}>{cartCount}</span>}
@@ -1041,15 +1065,28 @@ function LensRevealBrands({ brands, setPage }) {
 
 /* ---------------------------------- PUBLIC: PRODUCT CARD ---------------------------------- */
 
-function ProductCard({ product, brand, onOpen, index = 0 }) {
+function ProductCard({ product, brand, onOpen, index = 0, insights, isWishlisted, onToggleWishlist }) {
   const { p, dark } = useTheme();
   const [ref, visible] = useReveal(0.1);
   const tilt = useTilt(8);
   const accent = BRAND_ACCENT[product.brandId] || PRIMARY;
   return (
     <div ref={ref} className={`reveal ${visible ? "visible" : ""}`} style={{ transitionDelay: `${(index % 4) * 70}ms` }}>
-      <button ref={tilt.ref} onMouseMove={tilt.onMouseMove} onMouseLeave={tilt.onMouseLeave} onClick={() => onOpen(product)} className="glyph-card card-lift neon-border group text-left rounded-2xl overflow-hidden w-full" style={{ ...tilt.style, background: p.bg2, border: `1px solid ${dark ? p.border : alpha(accent, 0.4)}`, "--edge": accent }}>
+      <button ref={tilt.ref} onMouseMove={tilt.onMouseMove} onMouseLeave={tilt.onMouseLeave} onClick={() => onOpen(product)} className="glyph-card card-lift neon-border group relative text-left rounded-2xl overflow-hidden w-full" style={{ ...tilt.style, background: p.bg2, border: `1px solid ${dark ? p.border : alpha(accent, 0.4)}`, "--edge": accent }}>
         {!dark && <div style={{ height: 3, background: accent }} />}
+        {onToggleWishlist && (
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={(e) => { e.stopPropagation(); onToggleWishlist(product.id); }}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onToggleWishlist(product.id); } }}
+            className="absolute top-3 right-3 z-10 p-1.5 rounded-full btn-magnet"
+            style={{ background: alpha(p.bg2, 0.85), backdropFilter: "blur(4px)" }}
+            aria-label="Ajouter à la liste d'envies"
+          >
+            <Heart size={15} style={{ color: isWishlisted ? NEON.pink : p.steel, fill: isWishlisted ? NEON.pink : "none" }} />
+          </div>
+        )}
         <div className="relative p-6 pb-2">
           <ProductVisual product={product} stroke={alpha(p.text, 0.5)} />
           <div className="absolute inset-x-4 bottom-1 text-center text-[11px] mtr-mono uppercase tracking-wide opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: accent }}>Voir la fiche →</div>
@@ -1058,6 +1095,7 @@ function ProductCard({ product, brand, onOpen, index = 0 }) {
           <div className="mtr-mono text-[10px] uppercase tracking-[0.14em]" style={{ color: accent }}>{brand?.name}</div>
           <div className="mt-1 font-semibold" style={{ color: p.text }}>{product.name}</div>
           <div className="mt-1 mtr-mono text-[11px]" style={{ color: p.steel }}>{product.calibre} · {product.colorName}</div>
+          {insights && (insights.isBestSeller || insights.isNew || insights.lowStock) && <ProductBadges insights={insights} className="mt-2" />}
           <div className="mt-3 flex items-center justify-between">
             <PriceTag price={product.price} compareAt={product.compareAtPrice} className="font-bold" />
             {product.stock !== "En stock" && <Pill style={{ background: alpha(NEG, 0.14), color: NEG }}>{product.stock}</Pill>}
@@ -1069,33 +1107,49 @@ function ProductCard({ product, brand, onOpen, index = 0 }) {
   );
 }
 
-function FeaturedGrid({ products, brands, onOpen }) {
+// Generic horizontal product showcase, reused for "à la une", "récemment consulté" and
+// "bientôt indisponible" — avoids duplicating the card markup three times.
+function ProductRail({ title, eyebrow, eyebrowColor = NEON.pink, products, brands, onOpen, productInsights, wishlistIds, onToggleWishlist, holo = false }) {
   const { p } = useTheme();
-  const featured = products.filter((pr) => pr.featured);
   const [headRef, headVisible] = useReveal(0.3);
+  if (!products.length) return null;
   return (
     <section style={{ background: p.bg }} className="py-20 md:py-24">
       <div className="max-w-6xl mx-auto px-5 md:px-8">
         <div ref={headRef} className={`reveal ${headVisible ? "visible" : ""} flex items-end justify-between mb-10`}>
           <div>
-            <Eyebrow color={NEON.pink}>Sélection de la semaine</Eyebrow>
-            <h2 className="mtr-display text-3xl md:text-4xl font-bold" style={{ color: p.text }}>Verres holographiques à la une</h2>
+            <Eyebrow color={eyebrowColor}>{eyebrow}</Eyebrow>
+            <h2 className="mtr-display text-3xl md:text-4xl font-bold" style={{ color: p.text }}>{title}</h2>
           </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-          {featured.map((pr, i) => {
+          {products.map((pr, i) => {
             const tilt = useTilt(8);
             const accent = BRAND_ACCENT[pr.brandId] || PRIMARY;
             const brand = brands.find((b) => b.id === pr.brandId);
             const [ref, visible] = useReveal(0.1);
+            const insights = productInsights?.[pr.id];
             return (
               <div key={pr.id} ref={ref} className={`reveal ${visible ? "visible" : ""}`} style={{ transitionDelay: `${(i % 4) * 70}ms` }}>
-                <button ref={tilt.ref} onMouseMove={tilt.onMouseMove} onMouseLeave={tilt.onMouseLeave} onClick={() => onOpen(pr)} className="glyph-card card-lift neon-border group text-left rounded-2xl overflow-hidden w-full" style={{ ...tilt.style, background: p.bg2, border: `1px solid ${p.border}`, "--edge": accent }}>
-                  <div className="relative p-6 pb-2"><ProductVisual product={pr} stroke={alpha(p.text, 0.5)} holo /></div>
+                <button ref={tilt.ref} onMouseMove={tilt.onMouseMove} onMouseLeave={tilt.onMouseLeave} onClick={() => onOpen(pr)} className="glyph-card card-lift neon-border group relative text-left rounded-2xl overflow-hidden w-full" style={{ ...tilt.style, background: p.bg2, border: `1px solid ${p.border}`, "--edge": accent }}>
+                  {onToggleWishlist && (
+                    <div
+                      role="button" tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); onToggleWishlist(pr.id); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onToggleWishlist(pr.id); } }}
+                      className="absolute top-3 right-3 z-10 p-1.5 rounded-full btn-magnet"
+                      style={{ background: alpha(p.bg2, 0.85), backdropFilter: "blur(4px)" }}
+                      aria-label="Ajouter à la liste d'envies"
+                    >
+                      <Heart size={15} style={{ color: wishlistIds?.includes(pr.id) ? NEON.pink : p.steel, fill: wishlistIds?.includes(pr.id) ? NEON.pink : "none" }} />
+                    </div>
+                  )}
+                  <div className="relative p-6 pb-2"><ProductVisual product={pr} stroke={alpha(p.text, 0.5)} holo={holo} /></div>
                   <div className="px-5 pb-5 pt-2">
                     <div className="mtr-mono text-[10px] uppercase tracking-[0.14em]" style={{ color: accent }}>{brand?.name}</div>
                     <div className="mt-1 font-semibold" style={{ color: p.text }}>{pr.name}</div>
                     <div className="mt-1 mtr-mono text-[11px]" style={{ color: p.steel }}>{pr.calibre} · {pr.colorName}</div>
+                    {insights && (insights.isBestSeller || insights.isNew || insights.lowStock) && <ProductBadges insights={insights} className="mt-2" />}
                     <div className="mt-3"><PriceTag price={pr.price} compareAt={pr.compareAtPrice} className="font-bold" /></div>
                   </div>
                 </button>
@@ -1189,7 +1243,7 @@ function Footer({ setPage, onGoAdmin }) {
 
 /* ---------------------------------- PUBLIC: CATALOGUE ---------------------------------- */
 
-function CatalogPage({ products, brands, onOpen, initialFilter }) {
+function CatalogPage({ products, brands, onOpen, initialFilter, productInsights, wishlistIds, onToggleWishlist }) {
   const { p } = useTheme();
   const [query, setQuery] = useState("");
   const [brandFilter, setBrandFilter] = useState([]);
@@ -1294,7 +1348,7 @@ function CatalogPage({ products, brands, onOpen, initialFilter }) {
               </div>
             ) : (
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-                {filtered.map((pr, i) => <ProductCard key={pr.id} index={i} product={pr} brand={brands.find((b) => b.id === pr.brandId)} onOpen={onOpen} />)}
+                {filtered.map((pr, i) => <ProductCard key={pr.id} index={i} product={pr} brand={brands.find((b) => b.id === pr.brandId)} onOpen={onOpen} insights={productInsights?.[pr.id]} isWishlisted={wishlistIds?.includes(pr.id)} onToggleWishlist={onToggleWishlist} />)}
               </div>
             )}
           </div>
@@ -1375,18 +1429,111 @@ function AboutPage({ setPage }) {
 
 /* ---------------------------------- PUBLIC: PRODUCT MODAL ---------------------------------- */
 
-function ProductModal({ product, brand, onClose, onAddToCart }) {
+function StarRating({ value, size = 14, interactive = false, onChange }) {
+  const stars = [1, 2, 3, 4, 5];
+  return (
+    <span className="inline-flex items-center gap-0.5">
+      {stars.map((n) => (
+        <Star
+          key={n}
+          size={size}
+          onClick={interactive ? () => onChange(n) : undefined}
+          className={interactive ? "cursor-pointer" : ""}
+          style={{ color: NEON.orange, fill: n <= Math.round(value || 0) ? NEON.orange : "none" }}
+        />
+      ))}
+    </span>
+  );
+}
+
+function ReviewsSection({ product, reviews, session, onSubmitReview }) {
+  const { p } = useTheme();
+  const myReview = session ? reviews.find((r) => r.userId === session.user.id) : null;
+  const [rating, setRating] = useState(myReview?.rating || 0);
+  const [comment, setComment] = useState(myReview?.comment || "");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const avg = reviews.length ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : null;
+
+  const submit = async () => {
+    if (!rating) { setError("Choisissez une note."); return; }
+    setSubmitting(true); setError("");
+    try {
+      await onSubmitReview({ productId: product.id, rating, comment: comment.trim() });
+    } catch (err) {
+      setError(err.message || "Échec de l'envoi.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="mt-8 pt-6 border-t" style={{ borderColor: p.border }}>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="mtr-display font-bold text-lg" style={{ color: p.text }}>Avis clients</h3>
+        {avg !== null && (
+          <span className="flex items-center gap-2 text-sm" style={{ color: p.steel }}>
+            <StarRating value={avg} /> {avg.toFixed(1)} ({reviews.length} avis)
+          </span>
+        )}
+      </div>
+
+      <div className="p-4 rounded-xl mb-5" style={{ background: p.bg3 }}>
+        <div className="text-xs mtr-mono uppercase tracking-wide mb-2" style={{ color: p.steel }}>{myReview ? "Modifier mon avis" : "Laisser un avis"}</div>
+        <StarRating value={rating} size={20} interactive onChange={setRating} />
+        <textarea
+          rows={2}
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          placeholder="Votre avis sur ce produit (optionnel)…"
+          className="w-full mt-3 px-3 py-2.5 rounded-lg text-sm outline-none"
+          style={{ border: `1px solid ${p.borderStrong}`, background: p.bg2, color: p.text }}
+        />
+        {error && <p className="text-xs mt-2" style={{ color: NEG }}>{error}</p>}
+        <button onClick={submit} disabled={submitting} className="btn-magnet mt-3 px-4 py-2 rounded-full text-xs font-semibold disabled:opacity-50" style={{ background: p.text, color: p.bg }}>
+          {submitting ? "Envoi…" : myReview ? "Mettre à jour" : "Publier mon avis"}
+        </button>
+        {!session && <p className="text-[11px] mt-2" style={{ color: p.steel }}>Connectez-vous pour publier un avis.</p>}
+      </div>
+
+      {reviews.length === 0 ? (
+        <p className="text-sm" style={{ color: p.steel }}>Aucun avis pour le moment — soyez le premier à en laisser un.</p>
+      ) : (
+        <div className="space-y-4">
+          {reviews.map((r) => (
+            <div key={r.id} className="pb-4 border-b" style={{ borderColor: p.border }}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-semibold" style={{ color: p.text }}>{r.authorName}</span>
+                <StarRating value={r.rating} size={13} />
+              </div>
+              {r.comment && <p className="text-sm" style={{ color: alpha(p.text, 0.7) }}>{r.comment}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProductModal({ product, brand, onClose, onAddToCart, insights, isWishlisted, onToggleWishlist, reviews, session, onSubmitReview, onView }) {
   const { p } = useTheme();
   const [qty, setQty] = useState(1);
   useEffect(() => setQty(1), [product]);
+  useEffect(() => { if (product) onView?.(product.id); }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!product) return null;
   const accent = BRAND_ACCENT[product.brandId] || PRIMARY;
+  const productReviews = (reviews || []).filter((r) => r.productId === product.id);
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full md:max-w-3xl max-h-[92vh] overflow-y-auto rounded-t-3xl md:rounded-3xl" style={{ background: p.bg2, border: `1px solid ${p.border}`, animation: "mtrPop .35s cubic-bezier(.2,.8,.2,1)" }}>
         <style>{`@keyframes mtrPop { from { opacity:0; transform: translateY(24px) scale(.98);} to {opacity:1; transform:none;} }`}</style>
         <button onClick={onClose} className="absolute top-4 right-4 z-10 p-2 rounded-full btn-magnet" style={{ background: p.bg3 }}><X size={18} style={{ color: p.text }} /></button>
+        {onToggleWishlist && (
+          <button onClick={() => onToggleWishlist(product.id)} className="absolute top-4 right-16 z-10 p-2 rounded-full btn-magnet" style={{ background: p.bg3 }} aria-label="Ajouter à la liste d'envies">
+            <Heart size={18} style={{ color: isWishlisted ? NEON.pink : p.text, fill: isWishlisted ? NEON.pink : "none" }} />
+          </button>
+        )}
         <div className="grid md:grid-cols-2">
           <div className="p-6 md:p-8 relative overflow-hidden" style={{ background: p.bg3 }}>
             <div className="mesh-bg"><div className="mesh-blob" style={{ width: 260, height: 260, top: -60, left: -40, background: product.colorHex, opacity: 0.3 }} /></div>
@@ -1395,6 +1542,13 @@ function ProductModal({ product, brand, onClose, onAddToCart }) {
           <div className="p-8">
             <div className="mtr-mono text-xs uppercase tracking-[0.14em]" style={{ color: accent }}>{brand?.name}</div>
             <h2 className="mtr-display text-2xl font-bold mt-1" style={{ color: p.text }}>{product.name}</h2>
+            {insights?.avgRating != null && (
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <StarRating value={insights.avgRating} size={13} />
+                <span className="text-xs" style={{ color: p.steel }}>{insights.avgRating.toFixed(1)} ({insights.reviewCount} avis)</span>
+              </div>
+            )}
+            {insights && (insights.isBestSeller || insights.isNew || insights.lowStock) && <ProductBadges insights={insights} className="mt-2" />}
             <div className="mt-3"><PriceTag price={product.price} compareAt={product.compareAtPrice} className="text-2xl font-extrabold" /></div>
             <div className="mt-2"><ShippingBadge /></div>
             {product.description && <p className="mt-3 text-sm" style={{ color: alpha(p.text, 0.65) }}>{product.description}</p>}
@@ -1415,6 +1569,7 @@ function ProductModal({ product, brand, onClose, onAddToCart }) {
                 {product.stock === "Rupture" ? "Indisponible" : "Ajouter au panier"}
               </NeonButton>
             </div>
+            {onSubmitReview && <ReviewsSection product={product} reviews={productReviews} session={session} onSubmitReview={onSubmitReview} />}
           </div>
         </div>
       </div>
@@ -1423,6 +1578,49 @@ function ProductModal({ product, brand, onClose, onAddToCart }) {
 }
 
 /* ---------------------------------- PUBLIC: CART + CHECKOUT ---------------------------------- */
+
+function WishlistDrawer({ open, onClose, wishlistIds, products, brands, onRemove, onAddToCart, onOpenProduct }) {
+  const { p } = useTheme();
+  if (!open) return null;
+  const items = wishlistIds.map((id) => products.find((pr) => pr.id === id)).filter(Boolean);
+  return (
+    <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-black/45 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute right-0 top-0 bottom-0 w-full max-w-md flex flex-col" style={{ background: p.bg2, borderLeft: `1px solid ${p.border}`, animation: "mtrSlideIn .4s cubic-bezier(.2,.8,.2,1)" }}>
+        <style>{`@keyframes mtrSlideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
+        <div className="flex items-center justify-between px-6 py-5 border-b" style={{ borderColor: p.border }}>
+          <span className="font-bold flex items-center gap-2" style={{ color: p.text }}><Heart size={16} style={{ color: NEON.pink }} /> Liste d'envies</span>
+          <button onClick={onClose}><X size={20} style={{ color: p.text }} /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          {items.length === 0 ? (
+            <p className="text-sm mt-8 text-center" style={{ color: p.steel }}>Votre liste d'envies est vide.</p>
+          ) : (
+            items.map((product) => {
+              const brand = brands.find((b) => b.id === product.brandId);
+              return (
+                <div key={product.id} className="flex gap-4 py-4 border-b" style={{ borderColor: p.border }}>
+                  <button onClick={() => { onOpenProduct(product); onClose(); }} className="w-20 h-14 rounded-lg overflow-hidden shrink-0 p-2" style={{ background: p.bg3 }}>
+                    <ProductVisual product={product} stroke={alpha(p.text, 0.5)} />
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs mtr-mono uppercase" style={{ color: BRAND_ACCENT[product.brandId] || PRIMARY }}>{brand?.name}</div>
+                    <div className="text-sm font-semibold truncate" style={{ color: p.text }}>{product.name}</div>
+                    <div className="flex items-center justify-between mt-2">
+                      <PriceTag price={product.price} compareAt={product.compareAtPrice} className="text-sm font-bold" />
+                      <button onClick={() => onAddToCart(product, 1)} disabled={product.stock === "Rupture"} className="text-xs font-semibold px-3 py-1.5 rounded-full disabled:opacity-40" style={{ background: p.text, color: p.bg }}>Ajouter</button>
+                    </div>
+                  </div>
+                  <button onClick={() => onRemove(product.id)} className="self-start p-1" style={{ color: p.steel }}><Trash2 size={14} /></button>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function CartDrawer({ open, onClose, cart, products, brands, updateQty, removeItem, onCheckout }) {
   const { p } = useTheme();
@@ -2911,6 +3109,10 @@ function Root() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [wishlistIds, setWishlistIds] = useState([]);
+  const [recentlyViewed, setRecentlyViewed] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("monture_recent") || "[]"); } catch { return []; }
+  });
   const [authChecked, setAuthChecked] = useState(false);
   const [adminTab, setAdminTab] = useState("dashboard");
 
@@ -2918,11 +3120,13 @@ function Root() {
   const [brands, setBrands] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
 
   const [cart, setCart] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
+  const [wishlistOpen, setWishlistOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [activeProduct, setActiveProduct] = useState(null);
   const [catalogFilter, setCatalogFilter] = useState({ category: "Tous", gender: "Tous" });
@@ -2939,16 +3143,40 @@ function Root() {
   }
   const featuredProduct = featuredRef.current || null;
 
+  // Real signals computed from actual data — never invented. Only *paid* orders count toward
+  // "best-seller" so it can't be inflated by abandoned/pending carts, and "low stock" only shows
+  // when a real stock_quantity has been set on the product in the admin (no fake scarcity).
+  const productInsights = useMemo(() => {
+    const salesByProduct = {};
+    orders.forEach((o) => {
+      if (o.paymentStatus !== "paid") return;
+      (o.items || []).forEach((it) => { salesByProduct[it.productId] = (salesByProduct[it.productId] || 0) + it.qty; });
+    });
+    const ranked = Object.entries(salesByProduct).filter(([, qty]) => qty > 0).sort((a, b) => b[1] - a[1]);
+    const bestSellerIds = new Set(ranked.slice(0, 4).map(([id]) => id));
+    const now = Date.now();
+    const map = {};
+    products.forEach((p) => {
+      const isNew = p.createdAt ? now - new Date(p.createdAt).getTime() < 14 * 24 * 3600 * 1000 : false;
+      const lowStock = p.stockQuantity !== null && p.stockQuantity !== undefined && p.stockQuantity > 0 && p.stockQuantity <= 3;
+      const productReviews = reviews.filter((r) => r.productId === p.id);
+      const avgRating = productReviews.length ? productReviews.reduce((s, r) => s + r.rating, 0) / productReviews.length : null;
+      map[p.id] = { isBestSeller: bestSellerIds.has(p.id), isNew, lowStock, stockQuantity: p.stockQuantity, unitsSold: salesByProduct[p.id] || 0, avgRating, reviewCount: productReviews.length };
+    });
+    return map;
+  }, [products, orders, reviews]);
+
   // Initial data load from Supabase.
   useEffect(() => {
     let cancelled = false;
-    fetchAllData()
-      .then((data) => {
+    Promise.all([fetchAllData(), fetchAllReviews().catch(() => [])])
+      .then(([data, allReviews]) => {
         if (cancelled) return;
         setProducts(data.products);
         setBrands(data.brands);
         setSuppliers(data.suppliers);
         setOrders(data.orders);
+        setReviews(allReviews);
       })
       .catch((err) => { if (!cancelled) setLoadError(err.message || "Erreur de connexion à la base de données."); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -2970,8 +3198,15 @@ function Root() {
         } catch {
           if (!cancelled) setProfile(null);
         }
+        try {
+          const ids = await fetchWishlist(s.user.id);
+          if (!cancelled) setWishlistIds(ids);
+        } catch {
+          if (!cancelled) setWishlistIds([]);
+        }
       } else {
         setProfile(null);
+        setWishlistIds([]);
       }
       if (!cancelled) setAuthChecked(true);
     };
@@ -3010,6 +3245,33 @@ function Root() {
   const updateQty = (productId, qty) => setCart((c) => c.map((i) => (i.productId === productId ? { ...i, qty } : i)));
   const removeItem = (productId) => setCart((c) => c.filter((i) => i.productId !== productId));
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
+
+  const toggleWishlist = async (productId) => {
+    if (!session) { setCheckoutOpen(true); return; } // reuses the account step of the checkout wizard to sign in/up
+    const already = wishlistIds.includes(productId);
+    setWishlistIds((ids) => (already ? ids.filter((id) => id !== productId) : [...ids, productId])); // optimistic
+    try {
+      if (already) await removeFromWishlist(session.user.id, productId);
+      else await addToWishlist(session.user.id, productId);
+    } catch {
+      setWishlistIds((ids) => (already ? [...ids, productId] : ids.filter((id) => id !== productId))); // revert on failure
+    }
+  };
+
+  const submitReview = async ({ productId, rating, comment }) => {
+    if (!session) { setCheckoutOpen(true); return; }
+    const authorName = profile?.fullName?.trim() || session.user.email.split("@")[0];
+    const saved = await upsertReview({ productId, userId: session.user.id, authorName, rating, comment });
+    setReviews((rs) => [saved, ...rs.filter((r) => !(r.productId === saved.productId && r.userId === saved.userId))]);
+  };
+
+  const trackRecentlyViewed = (productId) => {
+    setRecentlyViewed((prev) => {
+      const next = [productId, ...prev.filter((id) => id !== productId)].slice(0, 8);
+      try { localStorage.setItem("monture_recent", JSON.stringify(next)); } catch { /* storage unavailable, ignore */ }
+      return next;
+    });
+  };
 
   const saveShippingAddress = async (address) => {
     const updated = await upsertProfile(session.user.id, { ...address, email: session.user.email });
@@ -3107,7 +3369,7 @@ function Root() {
   return (
     <div className="mtr grain" style={{ background: p.bg, minHeight: "100vh" }}>
       <AnnounceBar />
-      <SiteHeader page={page} setPage={goPage} onGoCategory={goCategory} cartCount={cartCount} onOpenCart={() => setCartOpen(true)} onGoAdmin={goAdmin} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
+      <SiteHeader page={page} setPage={goPage} onGoCategory={goCategory} cartCount={cartCount} onOpenCart={() => setCartOpen(true)} onGoAdmin={goAdmin} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} session={session} loyaltyPoints={profile?.loyaltyPoints || 0} wishlistCount={wishlistIds.length} onOpenWishlist={() => setWishlistOpen(true)} />
 
       {checkoutNotice && (
         <div className="relative z-30" style={{ background: checkoutNotice.type === "success" ? alpha(NEON.lime, 0.14) : alpha(NEON.yellow, 0.14) }}>
@@ -3130,18 +3392,68 @@ function Root() {
           <ScrollGlassesStory featured={featuredProduct} />
           <CategoryStrip onGoCategory={goCategory} />
           <LensRevealBrands brands={brands} setPage={goPage} />
-          <FeaturedGrid products={products} brands={brands} onOpen={setActiveProduct} />
+          <ProductRail
+            title="Verres holographiques à la une"
+            eyebrow="Sélection de la semaine"
+            eyebrowColor={NEON.pink}
+            products={products.filter((pr) => pr.featured)}
+            brands={brands}
+            onOpen={setActiveProduct}
+            productInsights={productInsights}
+            wishlistIds={wishlistIds}
+            onToggleWishlist={toggleWishlist}
+            holo
+          />
+          {products.some((pr) => productInsights[pr.id]?.lowStock) && (
+            <ProductRail
+              title="Il n'en reste que quelques-unes"
+              eyebrow="Stock limité — vraies quantités restantes"
+              eyebrowColor={NEG}
+              products={products.filter((pr) => productInsights[pr.id]?.lowStock)}
+              brands={brands}
+              onOpen={setActiveProduct}
+              productInsights={productInsights}
+              wishlistIds={wishlistIds}
+              onToggleWishlist={toggleWishlist}
+            />
+          )}
+          {recentlyViewed.length > 0 && (
+            <ProductRail
+              title="Repris là où vous en étiez"
+              eyebrow="Récemment consultés"
+              eyebrowColor={NEON.blue}
+              products={recentlyViewed.map((id) => products.find((pr) => pr.id === id)).filter(Boolean)}
+              brands={brands}
+              onOpen={setActiveProduct}
+              productInsights={productInsights}
+              wishlistIds={wishlistIds}
+              onToggleWishlist={toggleWishlist}
+            />
+          )}
           <TrustBand />
         </>
       )}
-      {page === "catalogue" && <CatalogPage products={products} brands={brands} onOpen={setActiveProduct} initialFilter={catalogFilter} />}
+      {page === "catalogue" && <CatalogPage products={products} brands={brands} onOpen={setActiveProduct} initialFilter={catalogFilter} productInsights={productInsights} wishlistIds={wishlistIds} onToggleWishlist={toggleWishlist} />}
       {page === "marques" && <BrandsPage brands={brands} products={products} setPage={goPage} />}
       {page === "apropos" && <AboutPage setPage={goPage} />}
 
       <Footer setPage={goPage} onGoAdmin={goAdmin} />
 
-      <ProductModal product={activeProduct} brand={activeProduct ? brands.find((b) => b.id === activeProduct.brandId) : null} onClose={() => setActiveProduct(null)} onAddToCart={addToCart} />
+      <ProductModal
+        product={activeProduct}
+        brand={activeProduct ? brands.find((b) => b.id === activeProduct.brandId) : null}
+        onClose={() => setActiveProduct(null)}
+        onAddToCart={addToCart}
+        insights={activeProduct ? productInsights[activeProduct.id] : null}
+        isWishlisted={activeProduct ? wishlistIds.includes(activeProduct.id) : false}
+        onToggleWishlist={toggleWishlist}
+        reviews={reviews}
+        session={session}
+        onSubmitReview={submitReview}
+        onView={trackRecentlyViewed}
+      />
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} cart={cart} products={products} brands={brands} updateQty={updateQty} removeItem={removeItem} onCheckout={() => { setCartOpen(false); setCheckoutOpen(true); }} />
+      <WishlistDrawer open={wishlistOpen} onClose={() => setWishlistOpen(false)} wishlistIds={wishlistIds} products={products} brands={brands} onRemove={toggleWishlist} onAddToCart={addToCart} onOpenProduct={setActiveProduct} />
       <CheckoutWizard
         open={checkoutOpen}
         onClose={() => setCheckoutOpen(false)}
