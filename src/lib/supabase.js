@@ -20,12 +20,39 @@ const brandToRow = (b) => ({ id: b.id, name: b.name, origin: b.origin, descripti
 const rowToSupplier = (r) => ({ id: r.id, name: r.name, contact: r.contact || "", delay: r.delay || "", location: r.location || "", brandIds: r.brand_ids || [] });
 const supplierToRow = (s) => ({ id: s.id, name: s.name, contact: s.contact, delay: s.delay, location: s.location, brand_ids: s.brandIds || [] });
 
+function stripTags(s) { return s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(); }
+
+function cleanDescription(raw) {
+  if (!raw) return "";
+  let s = raw;
+  if (/<table/i.test(s)) {
+    const rows = [];
+    const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    let m;
+    while ((m = rowRe.exec(s))) {
+      const cells = [...m[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((c) => stripTags(c[1]));
+      if (cells.length >= 2 && cells[0] && cells[1]) rows.push(`${cells[0]} : ${cells[1]}`);
+      else if (cells.length === 1 && cells[0]) rows.push(cells[0]);
+    }
+    s = rows.join(" · ");
+  } else {
+    s = stripTags(s);
+  }
+  s = s.replace(/\uFFFD/g, "");
+  s = s
+    .replace(/&eacute;/gi, "é").replace(/&egrave;/gi, "è").replace(/&agrave;/gi, "à")
+    .replace(/&ccedil;/gi, "ç").replace(/&ecirc;/gi, "ê").replace(/&amp;/gi, "&")
+    .replace(/&nbsp;/gi, " ").replace(/&#39;/g, "'").replace(/&apos;/gi, "'").replace(/&quot;/gi, '"');
+  return s.replace(/\s+/g, " ").trim();
+}
+
 const rowToProduct = (r) => ({
   id: r.id, name: r.name, brandId: r.brand_id, category: r.category, gender: r.gender,
   price: Number(r.price), cost: Number(r.cost || 0), colorName: r.color_name || "", colorHex: r.color_hex || "#00F0FF",
   shape: r.shape || "square", calibre: r.calibre || "", material: r.material || "", stock: r.stock || "En stock",
-  supplierId: r.supplier_id, featured: !!r.featured, description: r.description || "",
+  supplierId: r.supplier_id, featured: !!r.featured, description: cleanDescription(r.description || ""),
   photos: (r.photo_urls && r.photo_urls.length ? r.photo_urls : (r.photo_url ? [r.photo_url] : [])),
+  compareAtPrice: r.compare_at_price !== null && r.compare_at_price !== undefined ? Number(r.compare_at_price) : null,
 });
 const productToRow = (p) => ({
   id: p.id, name: p.name, brand_id: p.brandId, category: p.category, gender: p.gender,
@@ -33,10 +60,21 @@ const productToRow = (p) => ({
   calibre: p.calibre, material: p.material, stock: p.stock, supplier_id: p.supplierId,
   featured: p.featured, description: p.description,
   photo_urls: p.photos || [], photo_url: (p.photos && p.photos[0]) || "",
+  compare_at_price: p.compareAtPrice || null,
 });
 
-const rowToOrder = (r) => ({ id: r.id, client: r.client, email: r.email, date: r.order_date, items: r.items || [], status: r.status });
-const orderToRow = (o) => ({ id: o.id, client: o.client, email: o.email, order_date: o.date, items: o.items, status: o.status });
+const rowToOrder = (r) => ({
+  id: r.id, client: r.client, email: r.email, date: r.order_date, items: r.items || [], status: r.status,
+  userId: r.user_id || null, shippingAddress: r.shipping_address || null,
+  paymentStatus: r.payment_status || "pending", stripeSessionId: r.stripe_session_id || null,
+  total: r.total !== null && r.total !== undefined ? Number(r.total) : null,
+});
+const orderToRow = (o) => ({
+  id: o.id, client: o.client, email: o.email, order_date: o.date, items: o.items, status: o.status,
+  user_id: o.userId || null, shipping_address: o.shippingAddress || null,
+  payment_status: o.paymentStatus || "pending", stripe_session_id: o.stripeSessionId || null,
+  total: o.total ?? null,
+});
 
 /* ---------------------------------- FETCH ALL (initial load) ---------------------------------- */
 
@@ -161,6 +199,11 @@ export async function signIn(email, password) {
   if (error) throw error;
   return data.session;
 }
+export async function signUp(email, password) {
+  const { data, error } = await supabase.auth.signUp({ email, password });
+  if (error) throw error;
+  return data.session; // null if the project requires e-mail confirmation before sign-in
+}
 export async function signOut() {
   await supabase.auth.signOut();
 }
@@ -171,4 +214,40 @@ export async function getSession() {
 export function onAuthChange(callback) {
   const { data } = supabase.auth.onAuthStateChange((_event, session) => callback(session));
   return () => data.subscription.unsubscribe();
+}
+
+/* ---------------------------------- PROFILES (customer accounts + admin role) ---------------------------------- */
+
+const rowToProfile = (r) => ({
+  id: r.id, email: r.email || "", role: r.role || "customer", fullName: r.full_name || "",
+  phone: r.phone || "", addressLine1: r.address_line1 || "", addressLine2: r.address_line2 || "",
+  city: r.city || "", postalCode: r.postal_code || "", country: r.country || "France",
+});
+
+export async function getProfile(userId) {
+  const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
+  if (error) throw error;
+  return data ? rowToProfile(data) : null;
+}
+
+export async function upsertProfile(userId, profile) {
+  const row = {
+    id: userId, email: profile.email, full_name: profile.fullName, phone: profile.phone,
+    address_line1: profile.addressLine1, address_line2: profile.addressLine2,
+    city: profile.city, postal_code: profile.postalCode, country: profile.country,
+  };
+  const { data, error } = await supabase.from("profiles").upsert(row).select().single();
+  if (error) throw error;
+  return rowToProfile(data);
+}
+
+/* ---------------------------------- STRIPE CHECKOUT ---------------------------------- */
+
+export async function createStripeCheckout({ orderId, items, customerEmail }) {
+  const { data, error } = await supabase.functions.invoke("create-checkout-session", {
+    body: { orderId, items, customerEmail },
+  });
+  if (error) throw error;
+  if (!data?.url) throw new Error("Session de paiement introuvable.");
+  return data.url;
 }
