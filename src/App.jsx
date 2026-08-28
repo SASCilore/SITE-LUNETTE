@@ -216,6 +216,18 @@ function GlobalStyle() {
       @keyframes announceSweep { from { background-position: 0% 0; } to { background-position: 200% 0; } }
 
       .btn-magnet { transition: transform .25s cubic-bezier(.2,.8,.2,1), box-shadow .25s ease; }
+
+      /* Custom lens cursor — desktop (fine pointer) only, never on touch devices */
+      .mtr-cursor { position: fixed; top: 0; left: 0; width: 34px; height: 34px; pointer-events: none; z-index: 9999; transition: opacity .2s ease; }
+      .mtr-cursor.hovering { transform-origin: center; }
+      body.mtr-custom-cursor, body.mtr-custom-cursor * { cursor: none !important; }
+
+      /* Add-to-cart confetti burst */
+      .confetti-piece { position: fixed; top: 0; left: 0; width: 8px; height: 8px; pointer-events: none; z-index: 9998; border-radius: 2px; }
+      @keyframes confettiBurst {
+        0% { transform: translate(var(--x0), var(--y0)) rotate(0deg) scale(1); opacity: 1; }
+        100% { transform: translate(var(--x1), var(--y1)) rotate(var(--rot)) scale(0.4); opacity: 0; }
+      }
       .btn-magnet:hover { transform: translateY(-2px) scale(1.02); }
 
       .btn-neon { background: linear-gradient(90deg, var(--c1), var(--c2)); color: #07080A; box-shadow: 0 0 20px -6px var(--glow); animation: neonPulse 3.4s ease-in-out infinite; }
@@ -313,12 +325,40 @@ function ProductVisual({ product, holo = false, stroke, className = "" }) {
 }
 
 // Full gallery for the product detail modal: main image + thumbnail strip. Falls back to the
-// illustrated glyph when the product has no photos at all.
+// illustrated glyph when the product has no photos at all. The main image can be dragged
+// left/right for a live 3D-perspective tilt — not a true 360° spin (that needs a real multi-angle
+// photoshoot or a 3D model, neither of which exist here), but it gives a satisfying sense of
+// physically handling the object rather than looking at a flat picture.
 function ProductGallery({ product, holo = false, stroke }) {
   const { p } = useTheme();
   const photos = product?.photos || [];
   const [active, setActive] = useState(0);
   useEffect(() => setActive(0), [product?.id]);
+
+  const dragRef = useRef({ dragging: false, startX: 0, rotY: 0 });
+  const imgRef = useRef(null);
+  const [tiltStyle, setTiltStyle] = useState({});
+
+  const applyTilt = (rotY, rotX = 6) => {
+    setTiltStyle({ transform: `perspective(900px) rotateY(${rotY}deg) rotateX(${rotX}deg)`, transition: dragRef.current.dragging ? "none" : "transform .5s cubic-bezier(.2,.8,.2,1)" });
+  };
+
+  const onPointerDown = (e) => {
+    dragRef.current = { dragging: true, startX: e.clientX, rotY: dragRef.current.rotY };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onPointerMove = (e) => {
+    if (!dragRef.current.dragging) return;
+    const delta = e.clientX - dragRef.current.startX;
+    const rotY = Math.max(-28, Math.min(28, dragRef.current.rotY + delta * 0.25));
+    applyTilt(rotY);
+  };
+  const endDrag = () => {
+    if (!dragRef.current.dragging) return;
+    dragRef.current.dragging = false;
+    dragRef.current.rotY = 0;
+    applyTilt(0);
+  };
 
   if (photos.length === 0) {
     return <GlassesGlyph shape={product?.shape} tint={product?.colorHex} stroke={stroke} holo={holo} />;
@@ -326,11 +366,19 @@ function ProductGallery({ product, holo = false, stroke }) {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex-1 min-h-0 flex items-center justify-center">
-        <img src={photos[active]} alt={product.name || ""} className="max-w-full max-h-full object-contain" />
+      <div
+        className="flex-1 min-h-0 flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none"
+        style={{ WebkitUserSelect: "none" }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerLeave={endDrag}
+      >
+        <img ref={imgRef} src={photos[active]} alt={product.name || ""} draggable={false} className="max-w-full max-h-full object-contain" style={tiltStyle} />
       </div>
+      <p className="text-center text-[10px] mtr-mono uppercase tracking-wide mt-1" style={{ color: p.steel }}>Glissez pour incliner</p>
       {photos.length > 1 && (
-        <div className="flex gap-2 mt-4 overflow-x-auto scroll-thin pb-1">
+        <div className="flex gap-2 mt-3 overflow-x-auto scroll-thin pb-1">
           {photos.map((url, i) => (
             <button
               key={i}
@@ -1578,7 +1626,13 @@ function ProductModal({ product, brand, onClose, onAddToCart, insights, isWishli
                 <span className="px-3 text-sm font-semibold" style={{ color: p.text }}>{qty}</span>
                 <button onClick={() => setQty((q) => q + 1)} className="p-2.5" style={{ color: p.text }}><Plus size={14} /></button>
               </div>
-              <NeonButton disabled={product.stock === "Rupture"} onClick={() => { onAddToCart(product, qty); onClose(); }} className="flex-1 py-3 rounded-full" c1={accent} c2={accent === NEON.pink ? NEON.cyan : NEON.pink}>
+              <NeonButton
+                disabled={product.stock === "Rupture"}
+                onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); fireConfetti(r.left + r.width / 2, r.top + r.height / 2); onAddToCart(product, qty); onClose(); }}
+                className="flex-1 py-3 rounded-full"
+                c1={accent}
+                c2={accent === NEON.pink ? NEON.cyan : NEON.pink}
+              >
                 {product.stock === "Rupture" ? "Indisponible" : "Ajouter au panier"}
               </NeonButton>
             </div>
@@ -3496,10 +3550,129 @@ function Root() {
   );
 }
 
+// Custom lens-shaped cursor, desktop only (never intercepts touch input). Smoothly trails the
+// real pointer and grows slightly over anything clickable, for a bit of tactile feedback.
+function CustomCursor() {
+  const ref = useRef(null);
+  const [enabled, setEnabled] = useState(false);
+
+  useEffect(() => {
+    setEnabled(typeof window !== "undefined" && window.matchMedia && window.matchMedia("(pointer: fine)").matches);
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) return;
+    document.body.classList.add("mtr-custom-cursor");
+    const pos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    const target = { x: pos.x, y: pos.y };
+    const onMove = (e) => { target.x = e.clientX; target.y = e.clientY; };
+    const onOver = (e) => {
+      const el = ref.current;
+      if (!el) return;
+      const clickable = e.target.closest?.("button, a, [role='button'], input, select, textarea");
+      el.style.transform += ""; // no-op to keep transform chain stable
+      el.classList.toggle("hovering", !!clickable);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseover", onOver);
+    let raf;
+    const loop = () => {
+      pos.x += (target.x - pos.x) * 0.22;
+      pos.y += (target.y - pos.y) * 0.22;
+      const el = ref.current;
+      if (el) {
+        const scale = el.classList.contains("hovering") ? 1.6 : 1;
+        el.style.transform = `translate(${pos.x}px, ${pos.y}px) translate(-50%, -50%) scale(${scale})`;
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      document.body.classList.remove("mtr-custom-cursor");
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseover", onOver);
+      cancelAnimationFrame(raf);
+    };
+  }, [enabled]);
+
+  if (!enabled) return null;
+  return (
+    <div ref={ref} className="mtr-cursor" aria-hidden="true">
+      <svg width="34" height="34" viewBox="0 0 34 34">
+        <defs>
+          <linearGradient id="mtrCursorGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor={NEON.cyan} />
+            <stop offset="100%" stopColor={NEON.pink} />
+          </linearGradient>
+        </defs>
+        <ellipse cx="17" cy="17" rx="14" ry="12" fill="url(#mtrCursorGrad)" fillOpacity="0.3" stroke="url(#mtrCursorGrad)" strokeWidth="1.5" />
+      </svg>
+    </div>
+  );
+}
+
+// Small confetti burst fired from a screen position (e.g. the "Ajouter au panier" button) —
+// pure DOM/CSS, self-removing, no state kept around after the animation ends.
+function fireConfetti(x, y) {
+  const colors = [NEON.cyan, NEON.pink, NEON.lime, NEON.yellow, NEON.violet];
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const pieces = 18;
+  for (let i = 0; i < pieces; i++) {
+    const el = document.createElement("div");
+    el.className = "confetti-piece";
+    const angle = (Math.PI * 2 * i) / pieces + Math.random() * 0.5;
+    const dist = 60 + Math.random() * 70;
+    el.style.setProperty("--x0", `${x}px`);
+    el.style.setProperty("--y0", `${y}px`);
+    el.style.setProperty("--x1", `${x + Math.cos(angle) * dist}px`);
+    el.style.setProperty("--y1", `${y + Math.sin(angle) * dist - 30}px`);
+    el.style.setProperty("--rot", `${Math.random() * 360}deg`);
+    el.style.background = colors[i % colors.length];
+    el.style.animation = `confettiBurst ${0.6 + Math.random() * 0.3}s cubic-bezier(.2,.8,.2,1) forwards`;
+    container.appendChild(el);
+  }
+  setTimeout(() => container.remove(), 1000);
+}
+
+// Brand intro shown once per browser (sessionStorage), only on first landing this session.
+function IntroScreen({ onDone }) {
+  const { p } = useTheme();
+  const [leaving, setLeaving] = useState(false);
+  useEffect(() => {
+    const t1 = setTimeout(() => setLeaving(true), 1100);
+    const t2 = setTimeout(onDone, 1550);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [onDone]);
+  return (
+    <div
+      className="fixed inset-0 z-[9997] flex items-center justify-center transition-opacity duration-500"
+      style={{ background: p.bg, opacity: leaving ? 0 : 1, pointerEvents: leaving ? "none" : "auto" }}
+    >
+      <div className="mesh-bg">
+        <div className="mesh-blob" style={{ width: 420, height: 420, top: "20%", left: "20%", background: NEON.cyan, opacity: 0.25 }} />
+        <div className="mesh-blob" style={{ width: 380, height: 380, bottom: "15%", right: "20%", background: NEON.pink, opacity: 0.22, animationDelay: "-8s" }} />
+      </div>
+      <div className="relative mtr-display font-extrabold announce-text" style={{ fontSize: "clamp(2.5rem, 8vw, 5rem)", animation: "mtrPop .6s cubic-bezier(.2,.8,.2,1) both" }}>
+        MONTURE.
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const [showIntro, setShowIntro] = useState(() => {
+    try { return sessionStorage.getItem("monture_intro_seen") !== "1"; } catch { return true; }
+  });
+  const dismissIntro = () => {
+    try { sessionStorage.setItem("monture_intro_seen", "1"); } catch { /* ignore */ }
+    setShowIntro(false);
+  };
   return (
     <ThemeProvider>
       <GlobalStyle />
+      <CustomCursor />
+      {showIntro && <IntroScreen onDone={dismissIntro} />}
       <Root />
     </ThemeProvider>
   );
