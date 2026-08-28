@@ -7,13 +7,15 @@ import {
   LayoutDashboard, Package, Tags, Truck, ClipboardList, LogOut,
   Trash2, Pencil, Check, ArrowRight, Menu, Filter, ArrowLeft, Building2, Sparkles, Sun, Moon,
   Upload, FileSpreadsheet, Download, AlertTriangle, CheckCircle2, XCircle, Image as ImageIcon, Loader2,
+  User, MapPin, CreditCard, LogIn, UserPlus,
 } from "lucide-react";
 import {
   fetchAllData, dbCreateBrand, dbCreateBrands, dbUpdateBrand, dbDeleteBrand,
   dbCreateSupplier, dbCreateSuppliers, dbUpdateSupplier, dbDeleteSupplier,
   dbCreateProduct, dbCreateProducts, dbUpdateProduct, dbDeleteProduct,
   dbCreateOrder, dbUpdateOrderStatus, dbDeleteOrder,
-  uploadProductPhoto, signIn, signOut, getSession, onAuthChange,
+  uploadProductPhoto, signIn, signUp, signOut, getSession, onAuthChange,
+  getProfile, upsertProfile, createStripeCheckout,
 } from "./lib/supabase.js";
 
 /* ---------------------------------- THEME ---------------------------------- */
@@ -637,7 +639,7 @@ function PriceTag({ price, compareAt, className = "font-bold", color }) {
 
 function ShippingBadge({ size = 11 }) {
   return (
-    <span className="mtr-mono inline-flex items-center gap-1 font-bold uppercase tracking-wide" style={{ fontSize: size, color: NEON.lime }}>
+    <span className="mtr-mono inline-flex items-center gap-1 font-bold uppercase tracking-wide" style={{ fontSize: size, color: NEON.pink }}>
       <Truck size={size + 2} /> Livraison incluse
     </span>
   );
@@ -681,7 +683,7 @@ function AnnounceBar() {
         <div className="mesh-blob" style={{ width: 260, height: 260, top: -110, right: "8%", background: NEON.pink, opacity: 0.2, mixBlendMode: "screen", animationDelay: "-8s" }} />
       </div>
       <p className="relative mtr-mono announce-text text-[11px] md:text-xs font-bold uppercase tracking-[0.16em] px-4">
-        🚚 Livraison incluse sur tout le catalogue · Prix imbattables · Retours 30 jours 🚚
+        🚚 Livraison incluse sur tout le catalogue · Prix imbattables · Livraison rapide 🚚
       </p>
     </div>
   );
@@ -914,6 +916,45 @@ function ScrollGlassesStory({ featured }) {
   );
 }
 
+function CategoryStrip({ onGoCategory }) {
+  const { p, dark } = useTheme();
+  const [ref, visible] = useReveal(0.2);
+  const tiles = [
+    { category: "Solaire", gender: "Femme", label: "Solaire Femme", accent: NEON.pink },
+    { category: "Optique", gender: "Femme", label: "Vue Femme", accent: NEON.blue },
+    { category: "Solaire", gender: "Homme", label: "Solaire Homme", accent: NEON.cyan },
+    { category: "Optique", gender: "Homme", label: "Vue Homme", accent: NEON.yellow },
+  ];
+  return (
+    <section style={{ background: p.bg2 }} className="py-14 md:py-16">
+      <div ref={ref} className={`reveal ${visible ? "visible" : ""} max-w-6xl mx-auto px-5 md:px-8`}>
+        <Eyebrow>Parcourir par catégorie</Eyebrow>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+          {tiles.map((t, i) => (
+            <button
+              key={t.label}
+              onClick={() => onGoCategory(t.category, t.gender)}
+              className="neon-border card-lift group relative rounded-2xl p-6 text-left overflow-hidden"
+              style={{ background: p.bg, border: `1px solid ${dark ? p.border : alpha(t.accent, 0.35)}`, "--edge": t.accent }}
+            >
+              <div className="mesh-bg">
+                <div className="mesh-blob" style={{ width: 160, height: 160, top: -60, right: -50, background: t.accent, opacity: dark ? 0.18 : 0.35, mixBlendMode: dark ? "screen" : "multiply" }} />
+              </div>
+              <div className="relative">
+                <div className="mtr-mono text-[10px] uppercase tracking-wide mb-2" style={{ color: t.accent }}>0{i + 1}</div>
+                <div className="mtr-display font-extrabold text-lg md:text-xl leading-tight" style={{ color: p.text }}>{t.label}</div>
+                <div className="mt-3 inline-flex items-center gap-1 text-xs font-semibold transition-transform group-hover:translate-x-1" style={{ color: t.accent }}>
+                  Voir la sélection <ArrowRight size={13} />
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function LensRevealBrands({ brands, setPage }) {
   const { p } = useTheme();
   const [sectionRef, visible] = useReveal(0.3);
@@ -1083,7 +1124,7 @@ function TrustBand() {
   const items = [
     { title: "Authenticité garantie", desc: "Chaque paire est vérifiée et accompagnée de son certificat fournisseur.", accent: NEON.cyan },
     { title: "Livraison suivie", desc: "Expédition trackée, délais annoncés fournisseur par fournisseur.", accent: NEON.pink },
-    { title: "Retours 30 jours", desc: "Un doute sur la monture ? Retour gratuit sous 30 jours.", accent: NEON.lime },
+    { title: "Livraison rapide", desc: "Commande préparée et expédiée sous 48h ouvrées par nos fournisseurs agréés.", accent: NEON.lime },
   ];
   const [ref, visible] = useReveal(0.25);
   const [statsRef, statsVisible] = useReveal(0.3);
@@ -1103,7 +1144,7 @@ function TrustBand() {
         <div ref={statsRef} className={`reveal ${statsVisible ? "visible" : ""} grid grid-cols-2 md:grid-cols-4 gap-8 pt-12 border-t`} style={{ borderColor: p.border }}>
           <StatItem value={6} label="Maisons référencées" active={statsVisible} color={NEON.cyan} />
           <StatItem value={1200} suffix="+" label="Paires livrées" active={statsVisible} color={NEON.pink} />
-          <StatItem value={30} suffix=" j" label="Retours acceptés" active={statsVisible} color={NEON.yellow} />
+          <StatItem value={48} suffix="h" label="Délai d'expédition" active={statsVisible} color={NEON.yellow} />
           <StatItem value={98} suffix="%" label="Clients satisfaits" active={statsVisible} color={NEON.blue} />
         </div>
       </div>
@@ -1177,9 +1218,10 @@ function CatalogPage({ products, brands, onOpen, initialFilter }) {
       if (brandFilter.length && !brandFilter.includes(pr.brandId)) return false;
       if (category !== "Tous" && pr.category !== category) return false;
       if (gender !== "Tous" && pr.gender !== gender) return false;
-      if (priceRange === "-150" && pr.price >= 150) return false;
-      if (priceRange === "150-300" && (pr.price < 150 || pr.price > 300)) return false;
-      if (priceRange === "300+" && pr.price <= 300) return false;
+      if (priceRange === "-50" && pr.price >= 50) return false;
+      if (priceRange === "50-100" && (pr.price < 50 || pr.price > 100)) return false;
+      if (priceRange === "100-150" && (pr.price < 100 || pr.price > 150)) return false;
+      if (priceRange === "150+" && pr.price <= 150) return false;
       return true;
     });
   }, [products, brands, query, brandFilter, category, gender, priceRange]);
@@ -1215,7 +1257,7 @@ function CatalogPage({ products, brands, onOpen, initialFilter }) {
       <FilterGroup title="Catégorie">{[["Tous", "Tous"], ["Solaire", "Solaire"], ["Optique", "Vue"]].map(([val, label]) => <RadioRow key={val} label={label} active={category === val} onClick={() => setCategory(val)} />)}</FilterGroup>
       <FilterGroup title="Genre">{["Tous", "Homme", "Femme", "Mixte"].map((g) => <RadioRow key={g} label={g} active={gender === g} onClick={() => setGender(g)} />)}</FilterGroup>
       <FilterGroup title="Prix">
-        {[["Tous", "Tous"], ["-150", "Moins de 150 €"], ["150-300", "150 – 300 €"], ["300+", "Plus de 300 €"]].map(([val, label]) => (
+        {[["Tous", "Tous"], ["-50", "Moins de 50 €"], ["50-100", "50 à 100 €"], ["100-150", "100 à 150 €"], ["150+", "Plus de 150 €"]].map(([val, label]) => (
           <RadioRow key={val} label={label} active={priceRange === val} onClick={() => setPriceRange(val)} />
         ))}
       </FilterGroup>
@@ -1346,9 +1388,9 @@ function ProductModal({ product, brand, onClose, onAddToCart }) {
         <style>{`@keyframes mtrPop { from { opacity:0; transform: translateY(24px) scale(.98);} to {opacity:1; transform:none;} }`}</style>
         <button onClick={onClose} className="absolute top-4 right-4 z-10 p-2 rounded-full btn-magnet" style={{ background: p.bg3 }}><X size={18} style={{ color: p.text }} /></button>
         <div className="grid md:grid-cols-2">
-          <div className="p-10 relative overflow-hidden" style={{ background: p.bg3 }}>
+          <div className="p-6 md:p-8 relative overflow-hidden" style={{ background: p.bg3 }}>
             <div className="mesh-bg"><div className="mesh-blob" style={{ width: 260, height: 260, top: -60, left: -40, background: product.colorHex, opacity: 0.3 }} /></div>
-            <div className="relative h-full min-h-[260px]"><ProductGallery product={product} stroke={alpha(p.text, 0.55)} holo /></div>
+            <div className="relative aspect-square w-full max-h-[46vh] md:max-h-[420px] mx-auto"><ProductGallery product={product} stroke={alpha(p.text, 0.55)} holo /></div>
           </div>
           <div className="p-8">
             <div className="mtr-mono text-xs uppercase tracking-[0.14em]" style={{ color: accent }}>{brand?.name}</div>
@@ -1441,42 +1483,174 @@ function CartDrawer({ open, onClose, cart, products, brands, updateQty, removeIt
   );
 }
 
-function CheckoutModal({ open, onClose, cart, products, onConfirm }) {
+function CheckoutWizard({ open, onClose, cart, products, session, profile, onProfileSaved, onStartCheckout }) {
   const { p } = useTheme();
-  const [form, setForm] = useState({ name: "", email: "", address: "" });
-  const [done, setDone] = useState(false);
+  const [step, setStep] = useState("account");
+  const [authMode, setAuthMode] = useState("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authPending, setAuthPending] = useState(false);
+  const [signupNotice, setSignupNotice] = useState("");
+
+  const [address, setAddress] = useState({ fullName: "", phone: "", addressLine1: "", addressLine2: "", city: "", postalCode: "", country: "France" });
+  const [addressError, setAddressError] = useState("");
+  const [savingAddress, setSavingAddress] = useState(false);
+
+  const [payPending, setPayPending] = useState(false);
+  const [payError, setPayError] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setStep(session ? "address" : "account");
+    setAuthError(""); setAddressError(""); setPayError(""); setSignupNotice("");
+    if (profile) {
+      setAddress({
+        fullName: profile.fullName || "", phone: profile.phone || "",
+        addressLine1: profile.addressLine1 || "", addressLine2: profile.addressLine2 || "",
+        city: profile.city || "", postalCode: profile.postalCode || "", country: profile.country || "France",
+      });
+    }
+  }, [open, session, profile]);
+
   if (!open) return null;
 
-  const subtotal = cart.reduce((s, c) => s + (products.find((pr) => pr.id === c.productId)?.price || 0) * c.qty, 0);
-  const canSubmit = form.name.trim() && form.email.trim() && form.address.trim();
-  const submit = () => { onConfirm(form); setDone(true); };
-  const close = () => { setDone(false); setForm({ name: "", email: "", address: "" }); onClose(); };
+  const lines = cart.map((c) => ({ ...c, product: products.find((pr) => pr.id === c.productId) }));
+  const subtotal = lines.reduce((s, l) => s + (l.product?.price || 0) * l.qty, 0);
   const inputStyle = { border: `1px solid ${p.borderStrong}`, background: p.bg3, color: p.text };
+  const inputCls = "mtr-input w-full px-4 py-3 rounded-xl text-sm outline-none";
+
+  const submitAuth = async () => {
+    if (!email.trim() || !password) { setAuthError("Renseignez e-mail et mot de passe."); return; }
+    setAuthPending(true); setAuthError("");
+    try {
+      if (authMode === "signup") {
+        const newSession = await signUp(email.trim(), password);
+        if (!newSession) {
+          setSignupNotice("Compte créé. Si la confirmation par e-mail est activée sur ce site, vérifiez votre boîte mail puis reconnectez-vous ci-dessus.");
+          setAuthMode("signin");
+          setAuthPending(false);
+          return;
+        }
+      } else {
+        await signIn(email.trim(), password);
+      }
+      setStep("address");
+    } catch (err) {
+      setAuthError(err.message === "Invalid login credentials" ? "Identifiant ou mot de passe incorrect." : (err.message || "Échec de connexion."));
+    } finally {
+      setAuthPending(false);
+    }
+  };
+
+  const submitAddress = async () => {
+    const required = ["fullName", "phone", "addressLine1", "city", "postalCode", "country"];
+    if (required.some((k) => !address[k]?.trim())) { setAddressError("Merci de compléter tous les champs obligatoires."); return; }
+    setSavingAddress(true); setAddressError("");
+    try {
+      await onProfileSaved(address);
+      setStep("payment");
+    } catch (err) {
+      setAddressError(err.message || "Échec de l'enregistrement de l'adresse.");
+    } finally {
+      setSavingAddress(false);
+    }
+  };
+
+  const submitPayment = async () => {
+    setPayPending(true); setPayError("");
+    try {
+      await onStartCheckout(address); // redirects to Stripe on success — nothing left to render after
+    } catch (err) {
+      setPayError(err.message || "Échec de la préparation du paiement.");
+      setPayPending(false);
+    }
+  };
+
+  const steps = [{ id: "account", label: "Compte" }, { id: "address", label: "Livraison" }, { id: "payment", label: "Paiement" }];
+  const stepIndex = steps.findIndex((s) => s.id === step);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={close} />
-      <div className="relative w-full max-w-md mx-4 rounded-3xl p-8" style={{ background: p.bg2, border: `1px solid ${p.border}`, animation: "mtrPop .35s cubic-bezier(.2,.8,.2,1)" }}>
-        <button onClick={close} className="absolute top-4 right-4 p-2 rounded-full btn-magnet" style={{ background: p.bg3 }}><X size={18} style={{ color: p.text }} /></button>
-        {done ? (
-          <div className="text-center py-6">
-            <div className="w-14 h-14 rounded-full mx-auto flex items-center justify-center mb-4" style={{ background: alpha(POS, 0.16) }}><Check size={26} style={{ color: POS }} /></div>
-            <h3 className="mtr-display text-xl font-bold mb-2" style={{ color: p.text }}>Commande confirmée</h3>
-            <p className="text-sm mb-6" style={{ color: p.steel }}>Un e-mail de confirmation a été envoyé à {form.email}. Elle apparaît désormais dans l'espace pro.</p>
-            <NeonButton onClick={close} className="px-6 py-3 rounded-full">Retour à la boutique</NeonButton>
-          </div>
-        ) : (
-          <>
-            <h3 className="mtr-display text-xl font-bold mb-1" style={{ color: p.text }}>Finaliser la commande</h3>
-            <p className="text-sm mb-6" style={{ color: p.steel }}>Total : <strong style={{ color: p.text }}>{euro(subtotal)}</strong></p>
-            <div className="space-y-3">
-              <input placeholder="Nom complet" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mtr-input w-full px-4 py-3 rounded-xl text-sm outline-none" style={inputStyle} />
-              <input placeholder="E-mail" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="mtr-input w-full px-4 py-3 rounded-xl text-sm outline-none" style={inputStyle} />
-              <input placeholder="Adresse de livraison" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="mtr-input w-full px-4 py-3 rounded-xl text-sm outline-none" style={inputStyle} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-3xl p-8" style={{ background: p.bg2, border: `1px solid ${p.border}`, animation: "mtrPop .35s cubic-bezier(.2,.8,.2,1)" }}>
+        <button onClick={onClose} className="absolute top-4 right-4 p-2 rounded-full btn-magnet" style={{ background: p.bg3 }}><X size={18} style={{ color: p.text }} /></button>
+
+        <div className="flex items-center gap-2 mb-7">
+          {steps.map((s, i) => (
+            <React.Fragment key={s.id}>
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold" style={{ background: i <= stepIndex ? PRIMARY : p.bg3, color: i <= stepIndex ? "#07080A" : p.steel }}>
+                  {i < stepIndex ? <Check size={12} /> : i + 1}
+                </div>
+                <span className="text-xs font-medium hidden sm:inline" style={{ color: i <= stepIndex ? p.text : p.steel }}>{s.label}</span>
+              </div>
+              {i < steps.length - 1 && <div className="flex-1 h-px" style={{ background: i < stepIndex ? PRIMARY : p.border }} />}
+            </React.Fragment>
+          ))}
+        </div>
+
+        {step === "account" && (
+          <div>
+            <h3 className="mtr-display text-xl font-bold mb-1" style={{ color: p.text }}>{authMode === "signup" ? "Créer un compte" : "Se connecter"}</h3>
+            <p className="text-sm mb-5" style={{ color: p.steel }}>Un compte est nécessaire pour suivre votre commande.</p>
+            {signupNotice && <p className="text-sm mb-4 p-3 rounded-xl" style={{ background: alpha(NEON.yellow, 0.14), color: p.text }}>{signupNotice}</p>}
+            <div className="flex rounded-full p-1 mb-5" style={{ background: p.bg3 }}>
+              <button onClick={() => setAuthMode("signin")} className="flex-1 py-2 rounded-full text-sm font-semibold transition-colors" style={{ background: authMode === "signin" ? p.bg2 : "transparent", color: p.text }}>Se connecter</button>
+              <button onClick={() => setAuthMode("signup")} className="flex-1 py-2 rounded-full text-sm font-semibold transition-colors" style={{ background: authMode === "signup" ? p.bg2 : "transparent", color: p.text }}>Créer un compte</button>
             </div>
-            <NeonButton disabled={!canSubmit} onClick={submit} className="w-full mt-5 py-3 rounded-full">Confirmer la commande</NeonButton>
-            <p className="text-[11px] mt-3 text-center" style={{ color: p.steel }}>Paiement simulé — aucune donnée bancaire n'est demandée dans ce prototype.</p>
-          </>
+            <div className="space-y-3">
+              <input placeholder="Adresse e-mail" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} style={inputStyle} />
+              <input placeholder="Mot de passe" type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitAuth()} className={inputCls} style={inputStyle} />
+            </div>
+            {authError && <p className="text-sm mt-3" style={{ color: NEG }}>{authError}</p>}
+            <NeonButton onClick={submitAuth} disabled={authPending} className="w-full mt-5 py-3 rounded-full flex items-center justify-center gap-2">
+              {authPending ? <><Loader2 size={16} className="animate-spin" /> Patientez…</> : (authMode === "signup" ? <><UserPlus size={16} /> Créer mon compte</> : <><LogIn size={16} /> Me connecter</>)}
+            </NeonButton>
+          </div>
+        )}
+
+        {step === "address" && (
+          <div>
+            <h3 className="mtr-display text-xl font-bold mb-1" style={{ color: p.text }}>Adresse de livraison</h3>
+            <p className="text-sm mb-5" style={{ color: p.steel }}>Connecté en tant que {session?.user?.email}</p>
+            <div className="grid grid-cols-2 gap-3">
+              <input placeholder="Nom complet" value={address.fullName} onChange={(e) => setAddress((a) => ({ ...a, fullName: e.target.value }))} className={`${inputCls} col-span-2`} style={inputStyle} />
+              <input placeholder="Téléphone" value={address.phone} onChange={(e) => setAddress((a) => ({ ...a, phone: e.target.value }))} className={`${inputCls} col-span-2`} style={inputStyle} />
+              <input placeholder="Adresse" value={address.addressLine1} onChange={(e) => setAddress((a) => ({ ...a, addressLine1: e.target.value }))} className={`${inputCls} col-span-2`} style={inputStyle} />
+              <input placeholder="Complément (optionnel)" value={address.addressLine2} onChange={(e) => setAddress((a) => ({ ...a, addressLine2: e.target.value }))} className={`${inputCls} col-span-2`} style={inputStyle} />
+              <input placeholder="Ville" value={address.city} onChange={(e) => setAddress((a) => ({ ...a, city: e.target.value }))} className={inputCls} style={inputStyle} />
+              <input placeholder="Code postal" value={address.postalCode} onChange={(e) => setAddress((a) => ({ ...a, postalCode: e.target.value }))} className={inputCls} style={inputStyle} />
+              <input placeholder="Pays" value={address.country} onChange={(e) => setAddress((a) => ({ ...a, country: e.target.value }))} className={`${inputCls} col-span-2`} style={inputStyle} />
+            </div>
+            {addressError && <p className="text-sm mt-3" style={{ color: NEG }}>{addressError}</p>}
+            <NeonButton onClick={submitAddress} disabled={savingAddress} className="w-full mt-5 py-3 rounded-full flex items-center justify-center gap-2">
+              {savingAddress ? <><Loader2 size={16} className="animate-spin" /> Enregistrement…</> : <>Continuer <ArrowRight size={16} /></>}
+            </NeonButton>
+          </div>
+        )}
+
+        {step === "payment" && (
+          <div>
+            <h3 className="mtr-display text-xl font-bold mb-1" style={{ color: p.text }}>Paiement sécurisé</h3>
+            <p className="text-sm mb-5" style={{ color: p.steel }}>Vous allez être redirigé vers Stripe pour finaliser le paiement.</p>
+            <div className="rounded-2xl p-4 mb-5 space-y-2" style={{ background: p.bg3 }}>
+              {lines.map((l) => (
+                <div key={l.productId} className="flex items-center justify-between text-sm">
+                  <span style={{ color: p.text }}>{l.qty}× {l.product?.name}</span>
+                  <span style={{ color: p.steel }}>{euro((l.product?.price || 0) * l.qty)}</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between pt-2 mt-2 border-t font-bold" style={{ borderColor: p.border, color: p.text }}>
+                <span>Total</span><span>{euro(subtotal)}</span>
+              </div>
+            </div>
+            {payError && <p className="text-sm mb-3" style={{ color: NEG }}>{payError}</p>}
+            <NeonButton onClick={submitPayment} disabled={payPending} className="w-full py-3 rounded-full flex items-center justify-center gap-2">
+              {payPending ? <><Loader2 size={16} className="animate-spin" /> Redirection…</> : <><CreditCard size={16} /> Payer {euro(subtotal)} avec Stripe</>}
+            </NeonButton>
+            <p className="text-[11px] mt-3 text-center" style={{ color: p.steel }}>Paiement traité par Stripe — aucune donnée bancaire n'est stockée sur ce site.</p>
+          </div>
         )}
       </div>
     </div>
@@ -1485,7 +1659,7 @@ function CheckoutModal({ open, onClose, cart, products, onConfirm }) {
 
 /* ---------------------------------- ADMIN: LOGIN ---------------------------------- */
 
-function AdminLogin({ onLogin, onBackToSite }) {
+function AdminLogin({ onLogin, onBackToSite, deniedNotice }) {
   const { p } = useTheme();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -1513,6 +1687,7 @@ function AdminLogin({ onLogin, onBackToSite }) {
       </div>
       <div className="relative w-full max-w-sm">
         <button onClick={onBackToSite} className="flex items-center gap-2 text-sm mb-8" style={{ color: alpha(p.text, 0.5) }}><ArrowLeft size={14} /> Retour au site</button>
+        {deniedNotice && <p className="text-sm mb-4 p-3 rounded-xl" style={{ background: alpha(NEG, 0.14), color: NEG }}>{deniedNotice}</p>}
         <div className="mtr-display text-2xl font-extrabold mb-1" style={{ color: p.text }}>MONTURE<span style={{ color: PRIMARY }}>.</span> Pro</div>
         <p className="text-sm mb-8" style={{ color: alpha(p.text, 0.45) }}>Espace d'administration du catalogue et des commandes.</p>
         <div className="space-y-3">
@@ -2687,7 +2862,7 @@ function AdminOrders({ orders, setOrders, products }) {
           <table className="w-full text-sm min-w-[720px]">
             <thead>
               <tr className="text-left" style={{ background: p.bg3 }}>
-                {["Commande", "Client", "Date", "Articles", "Total", "Statut", ""].map((h) => (
+                {["Commande", "Client", "Date", "Articles", "Total", "Paiement", "Statut", ""].map((h) => (
                   <th key={h} className="px-4 py-3 mtr-mono text-[11px] uppercase tracking-wide" style={{ color: p.steel }}>{h}</th>
                 ))}
               </tr>
@@ -2702,7 +2877,15 @@ function AdminOrders({ orders, setOrders, products }) {
                   </td>
                   <td className="px-4 py-3" style={{ color: p.steel }}>{o.date}</td>
                   <td className="px-4 py-3" style={{ color: p.steel }}>{o.items.reduce((s, it) => s + it.qty, 0)}</td>
-                  <td className="px-4 py-3 font-semibold" style={{ color: p.text }}>{euro(total(o))}</td>
+                  <td className="px-4 py-3 font-semibold" style={{ color: p.text }}>{euro(o.total ?? total(o))}</td>
+                  <td className="px-4 py-3">
+                    <Pill style={{
+                      background: alpha(o.paymentStatus === "paid" ? NEON.lime : o.paymentStatus === "failed" ? NEG : NEON.orange, 0.14),
+                      color: o.paymentStatus === "paid" ? NEON.lime : o.paymentStatus === "failed" ? NEG : NEON.orange,
+                    }}>
+                      {o.paymentStatus === "paid" ? "Payée" : o.paymentStatus === "failed" ? "Échouée" : "En attente"}
+                    </Pill>
+                  </td>
                   <td className="px-4 py-3">
                     <select value={o.status} onChange={(e) => setStatus(o.id, e.target.value)} className="px-2.5 py-1.5 rounded-full text-xs font-medium outline-none" style={{ background: "transparent", border: `1px solid ${statusColor(o.status)}`, color: statusColor(o.status) }}>
                       {statuses.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -2727,6 +2910,7 @@ function Root() {
   const [page, setPage] = useState("home");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [adminTab, setAdminTab] = useState("dashboard");
 
@@ -2742,6 +2926,7 @@ function Root() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [activeProduct, setActiveProduct] = useState(null);
   const [catalogFilter, setCatalogFilter] = useState({ category: "Tous", gender: "Tous" });
+  const [checkoutNotice, setCheckoutNotice] = useState(null); // { type: 'success'|'cancel' } | null
 
   // Picked once products are loaded (i.e. once per visit / page refresh), not recomputed on every
   // re-render — otherwise unrelated state changes elsewhere (theme toggle, cart) would swap the
@@ -2770,11 +2955,48 @@ function Root() {
     return () => { cancelled = true; };
   }, []);
 
-  // Auth session (persists across reloads while the Supabase session is valid).
+  // Auth session (persists across reloads while the Supabase session is valid). Whenever the
+  // session changes we also (re)fetch the profile — this is what distinguishes an admin account
+  // from a customer account (see the "profiles.role" column), since both use the same Supabase
+  // Auth. Without this, any customer who creates an account could otherwise open /Espace pro.
   useEffect(() => {
-    getSession().then((s) => { setSession(s); setAuthChecked(true); }).catch(() => setAuthChecked(true));
-    const unsubscribe = onAuthChange((s) => setSession(s));
-    return unsubscribe;
+    let cancelled = false;
+    const syncProfile = async (s) => {
+      setSession(s);
+      if (s) {
+        try {
+          const prof = await getProfile(s.user.id);
+          if (!cancelled) setProfile(prof);
+        } catch {
+          if (!cancelled) setProfile(null);
+        }
+      } else {
+        setProfile(null);
+      }
+      if (!cancelled) setAuthChecked(true);
+    };
+    getSession().then(syncProfile).catch(() => setAuthChecked(true));
+    const unsubscribe = onAuthChange(syncProfile);
+    return () => { cancelled = true; unsubscribe(); };
+  }, []);
+
+  // Stripe redirects back with ?checkout=success|cancel — read it once on load, then clean the
+  // URL so refreshing the page doesn't replay the notice.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get("checkout");
+    if (result === "success") {
+      setCheckoutNotice({ type: "success" });
+      setCart([]);
+    } else if (result === "cancel") {
+      setCheckoutNotice({ type: "cancel" });
+    }
+    if (result) {
+      params.delete("checkout");
+      params.delete("session_id");
+      const qs = params.toString();
+      window.history.replaceState({}, "", window.location.pathname + (qs ? `?${qs}` : ""));
+    }
   }, []);
 
   const addToCart = (product, qty) => {
@@ -2789,11 +3011,34 @@ function Root() {
   const removeItem = (productId) => setCart((c) => c.filter((i) => i.productId !== productId));
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
 
-  const confirmOrder = async (form) => {
-    const newOrder = { id: newId("o"), client: form.name, email: form.email, date: new Date().toLocaleDateString("fr-FR"), items: cart.map((c) => ({ productId: c.productId, qty: c.qty })), status: "En attente" };
-    await dbCreateOrder(newOrder); // throws on failure — CheckoutModal shows the error and keeps the cart intact
-    setOrders((os) => [newOrder, ...os]);
-    setCart([]);
+  const saveShippingAddress = async (address) => {
+    const updated = await upsertProfile(session.user.id, { ...address, email: session.user.email });
+    setProfile(updated);
+  };
+
+  // Creates the order (status "pending" payment) then hands off to Stripe Checkout — the browser
+  // navigates away entirely, so nothing after the redirect matters; payment confirmation comes
+  // back later via the webhook (server-side) and the ?checkout=success redirect (client-side UX).
+  const startCheckout = async (address) => {
+    const lines = cart.map((c) => ({ ...c, product: products.find((pr) => pr.id === c.productId) }));
+    const total = lines.reduce((s, l) => s + (l.product?.price || 0) * l.qty, 0);
+    const order = {
+      id: newId("o"),
+      client: address.fullName,
+      email: session.user.email,
+      date: new Date().toLocaleDateString("fr-FR"),
+      items: cart.map((c) => ({ productId: c.productId, qty: c.qty })),
+      status: "En attente",
+      userId: session.user.id,
+      shippingAddress: address,
+      paymentStatus: "pending",
+      total,
+    };
+    await dbCreateOrder(order);
+    setOrders((os) => [order, ...os]);
+    const stripeItems = lines.map((l) => ({ name: l.product?.name || "Produit", price: l.product?.price || 0, quantity: l.qty, image: l.product?.photos?.[0] }));
+    const url = await createStripeCheckout({ orderId: order.id, items: stripeItems, customerEmail: session.user.email });
+    window.location.href = url;
   };
 
   const goAdmin = () => { setMode("admin"); setCartOpen(false); };
@@ -2834,8 +3079,17 @@ function Root() {
   }
 
   if (mode === "admin") {
-    if (!session) {
-      return <div className="mtr grain" style={{ background: p.bg, minHeight: "100vh" }}><AdminLogin onLogin={handleLogin} onBackToSite={backToSite} /></div>;
+    const isAdmin = session && profile && profile.role === "admin";
+    if (!isAdmin) {
+      return (
+        <div className="mtr grain" style={{ background: p.bg, minHeight: "100vh" }}>
+          <AdminLogin
+            onLogin={handleLogin}
+            onBackToSite={backToSite}
+            deniedNotice={session && profile && profile.role !== "admin" ? "Ce compte n'a pas les droits d'accès à l'espace pro." : ""}
+          />
+        </div>
+      );
     }
     return (
       <div className="mtr grain" style={{ background: p.bg, minHeight: "100vh" }}>
@@ -2855,10 +3109,26 @@ function Root() {
       <AnnounceBar />
       <SiteHeader page={page} setPage={goPage} onGoCategory={goCategory} cartCount={cartCount} onOpenCart={() => setCartOpen(true)} onGoAdmin={goAdmin} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
 
+      {checkoutNotice && (
+        <div className="relative z-30" style={{ background: checkoutNotice.type === "success" ? alpha(NEON.lime, 0.14) : alpha(NEON.yellow, 0.14) }}>
+          <div className="max-w-6xl mx-auto px-5 md:px-8 py-3 flex items-center justify-between gap-3">
+            <span className="text-sm font-medium flex items-center gap-2" style={{ color: p.text }}>
+              {checkoutNotice.type === "success" ? (
+                <><Check size={16} style={{ color: NEON.lime }} /> Paiement confirmé — merci pour votre commande ! Un e-mail de confirmation vous sera envoyé.</>
+              ) : (
+                <><AlertTriangle size={16} style={{ color: "#8a7d00" }} /> Paiement annulé — votre panier a été conservé, vous pouvez réessayer quand vous voulez.</>
+              )}
+            </span>
+            <button onClick={() => setCheckoutNotice(null)}><X size={16} style={{ color: p.steel }} /></button>
+          </div>
+        </div>
+      )}
+
       {page === "home" && (
         <>
           <Hero setPage={goPage} featured={featuredProduct} brands={brands} onOpenProduct={setActiveProduct} />
           <ScrollGlassesStory featured={featuredProduct} />
+          <CategoryStrip onGoCategory={goCategory} />
           <LensRevealBrands brands={brands} setPage={goPage} />
           <FeaturedGrid products={products} brands={brands} onOpen={setActiveProduct} />
           <TrustBand />
@@ -2872,7 +3142,16 @@ function Root() {
 
       <ProductModal product={activeProduct} brand={activeProduct ? brands.find((b) => b.id === activeProduct.brandId) : null} onClose={() => setActiveProduct(null)} onAddToCart={addToCart} />
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} cart={cart} products={products} brands={brands} updateQty={updateQty} removeItem={removeItem} onCheckout={() => { setCartOpen(false); setCheckoutOpen(true); }} />
-      <CheckoutModal open={checkoutOpen} onClose={() => setCheckoutOpen(false)} cart={cart} products={products} onConfirm={confirmOrder} />
+      <CheckoutWizard
+        open={checkoutOpen}
+        onClose={() => setCheckoutOpen(false)}
+        cart={cart}
+        products={products}
+        session={session}
+        profile={profile}
+        onProfileSaved={saveShippingAddress}
+        onStartCheckout={startCheckout}
+      />
     </div>
   );
 }
