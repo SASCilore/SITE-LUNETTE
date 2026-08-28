@@ -877,15 +877,15 @@ function ScrollGlassesStory({ featured }) {
           <div className="mesh-blob" style={{ width: 420, height: 420, bottom: "10%", right: "-10%", background: NEON.pink, opacity: 0.08 + glow * 0.1, animationDelay: "-9s" }} />
         </div>
 
-        <StepCard n={1} title="Repérez la monture" text="Parcourez une sélection resserrée des plus grandes maisons, sans bruit ni contrefaçon." style={{ left: "7%", top: "28%" }} opacity={s1} />
-        <StepCard n={2} title="Regardez à travers" text="Chaque référence est vérifiée, chaque provenance tracée jusqu'au fournisseur agréé." style={{ right: "7%", top: "26%" }} opacity={s2} />
-        <StepCard n={3} title="Elle arrive chez vous" text="Expédiée directement par nos partenaires, suivie de bout en bout jusqu'à votre porte." style={{ left: "50%", bottom: "10%", transform: `translate(-50%, ${(1 - s3) * 18}px)` }} opacity={s3} />
+        <StepCard n={1} title="Repérez la monture" text="Parcourez une sélection resserrée des plus grandes maisons, sans bruit ni contrefaçon." style={{ left: "3%", top: "16%" }} opacity={s1} />
+        <StepCard n={2} title="Regardez à travers" text="Chaque référence est vérifiée, chaque provenance tracée jusqu'au fournisseur agréé." style={{ right: "3%", top: "14%" }} opacity={s2} />
+        <StepCard n={3} title="Elle arrive chez vous" text="Expédiée directement par nos partenaires, suivie de bout en bout jusqu'à votre porte." style={{ left: "50%", bottom: "4%", transform: `translate(-50%, ${(1 - s3) * 18}px)` }} opacity={s3} />
 
         {featured ? (
           <div
             style={{
-              width: "min(70vw, 460px)",
-              height: 260,
+              width: "min(92vw, 900px)",
+              height: 520,
               display: "flex", alignItems: "center", justifyContent: "center",
               transform: `perspective(1100px) translateY(${translateY}px) scale(${scale}) rotateX(${rotX}deg) rotateY(${rotY}deg)`,
               transformStyle: "preserve-3d",
