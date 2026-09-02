@@ -4,6 +4,8 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  // Fails loudly at build/runtime rather than silently returning empty data everywhere —
+  // easier to diagnose than a blank catalog with no error.
   console.error(
     "Variables d'environnement Supabase manquantes. Copiez .env.example vers .env et renseignez " +
       "VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY (Project Settings > API dans Supabase)."
@@ -22,6 +24,10 @@ const supplierToRow = (s) => ({ id: s.id, name: s.name, contact: s.contact, dela
 
 function stripTags(s) { return s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(); }
 
+// Some supplier catalogs export the description as a raw HTML spec table with broken accented
+// characters. Converts it to a readable "Label : Value · Label : Value" line instead of dumping
+// tags on screen. Applied at read time (not just at import) so it also fixes rows imported before
+// this fix, without needing a re-import.
 function cleanDescription(raw) {
   if (!raw) return "";
   let s = raw;
@@ -71,12 +77,14 @@ const rowToOrder = (r) => ({
   userId: r.user_id || null, shippingAddress: r.shipping_address || null,
   paymentStatus: r.payment_status || "pending", stripeSessionId: r.stripe_session_id || null,
   total: r.total !== null && r.total !== undefined ? Number(r.total) : null,
+  promoCode: r.promo_code || null, discountPercent: r.discount_percent !== null && r.discount_percent !== undefined ? Number(r.discount_percent) : null,
 });
 const orderToRow = (o) => ({
   id: o.id, client: o.client, email: o.email, order_date: o.date, items: o.items, status: o.status,
   user_id: o.userId || null, shipping_address: o.shippingAddress || null,
   payment_status: o.paymentStatus || "pending", stripe_session_id: o.stripeSessionId || null,
   total: o.total ?? null,
+  promo_code: o.promoCode || null, discount_percent: o.discountPercent ?? null,
 });
 
 /* ---------------------------------- FETCH ALL (initial load) ---------------------------------- */
@@ -170,6 +178,10 @@ export async function dbDeleteProduct(id) {
 /* ---------------------------------- ORDERS ---------------------------------- */
 
 export async function dbCreateOrder(order) {
+  // No .select() here on purpose: orders can be inserted by anonymous visitors (checkout),
+  // but the read policy is admin-only — chaining .select() after insert would try to read the
+  // row back under the same anon session and fail against RLS. The order object is already
+  // fully formed client-side (id included), so we just return it as-is on success.
   const { error } = await supabase.from("orders").insert(orderToRow(order));
   if (error) throw error;
   return order;
@@ -205,7 +217,7 @@ export async function signIn(email, password) {
 export async function signUp(email, password) {
   const { data, error } = await supabase.auth.signUp({ email, password });
   if (error) throw error;
-  return data.session;
+  return data.session; // null if the project requires e-mail confirmation before sign-in
 }
 export async function signOut() {
   await supabase.auth.signOut();
@@ -247,6 +259,8 @@ export async function upsertProfile(userId, profile) {
 
 /* ---------------------------------- STRIPE CHECKOUT ---------------------------------- */
 
+// Calls the create-checkout-session Edge Function and returns the Stripe-hosted checkout URL
+// to redirect the browser to. Nothing Stripe-secret ever runs client-side.
 export async function createStripeCheckout({ orderId, items, customerEmail }) {
   const { data, error } = await supabase.functions.invoke("create-checkout-session", {
     body: { orderId, items, customerEmail },
@@ -265,7 +279,7 @@ export async function fetchWishlist(userId) {
 }
 export async function addToWishlist(userId, productId) {
   const { error } = await supabase.from("wishlist_items").insert({ user_id: userId, product_id: productId });
-  if (error && error.code !== "23505") throw error;
+  if (error && error.code !== "23505") throw error; // 23505 = already in wishlist, ignore
 }
 export async function removeFromWishlist(userId, productId) {
   const { error } = await supabase.from("wishlist_items").delete().eq("user_id", userId).eq("product_id", productId);
@@ -297,4 +311,45 @@ export async function upsertReview({ productId, userId, authorName, rating, comm
     .single();
   if (error) throw error;
   return rowToReview(data);
+}
+
+/* ---------------------------------- PROMO CODES ---------------------------------- */
+
+const rowToPromo = (r) => ({
+  code: r.code, discountPercent: Number(r.discount_percent), active: r.active,
+  expiresAt: r.expires_at, maxUses: r.max_uses, usedCount: r.used_count,
+});
+
+export async function validatePromoCode(code) {
+  const { data, error } = await supabase.from("promo_codes").select("*").ilike("code", code.trim()).maybeSingle();
+  if (error) throw error;
+  if (!data) return { valid: false, reason: "Code introuvable." };
+  const promo = rowToPromo(data);
+  if (!promo.active) return { valid: false, reason: "Ce code n'est plus actif." };
+  if (promo.expiresAt && new Date(promo.expiresAt) < new Date()) return { valid: false, reason: "Ce code a expiré." };
+  if (promo.maxUses != null && promo.usedCount >= promo.maxUses) return { valid: false, reason: "Ce code a atteint sa limite d'utilisation." };
+  return { valid: true, promo };
+}
+
+export async function fetchPromoCodes() {
+  const { data, error } = await supabase.from("promo_codes").select("*").order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data || []).map(rowToPromo);
+}
+export async function createPromoCode(promo) {
+  const { data, error } = await supabase
+    .from("promo_codes")
+    .insert({ code: promo.code.trim().toUpperCase(), discount_percent: promo.discountPercent, active: true, expires_at: promo.expiresAt || null, max_uses: promo.maxUses || null })
+    .select()
+    .single();
+  if (error) throw error;
+  return rowToPromo(data);
+}
+export async function setPromoCodeActive(code, active) {
+  const { error } = await supabase.from("promo_codes").update({ active }).eq("code", code);
+  if (error) throw error;
+}
+export async function deletePromoCode(code) {
+  const { error } = await supabase.from("promo_codes").delete().eq("code", code);
+  if (error) throw error;
 }
