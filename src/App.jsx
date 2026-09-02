@@ -1,13 +1,18 @@
 import React, { useState, useMemo, useRef, useEffect, useContext, createContext } from "react";
-import * as THREE from "three";
+// Note: "three" is intentionally NOT statically imported here — it's a large 3D library only
+// needed by the Glasses3D fallback (shown when a product has no real photo, which is now the
+// rare case), so it's loaded on demand inside Glasses3D's effect instead of shipping it to every
+// visitor's initial page load.
 import Papa from "papaparse";
-import * as XLSX from "xlsx";
+// Note: "xlsx" is intentionally NOT statically imported here — it's a large library only ever
+// needed by the admin's Excel import, so it's loaded on demand (see handleFile below) instead of
+// shipping it to every visitor of the public site.
 import {
   ShoppingBag, X, Plus, Minus, Search, ChevronDown, ChevronRight,
   LayoutDashboard, Package, Tags, Truck, ClipboardList, LogOut,
   Trash2, Pencil, Check, ArrowRight, Menu, Filter, ArrowLeft, Building2, Sparkles, Sun, Moon,
   Upload, FileSpreadsheet, Download, AlertTriangle, CheckCircle2, XCircle, Image as ImageIcon, Loader2,
-  User, MapPin, CreditCard, LogIn, UserPlus, Heart, Star,
+  User, MapPin, CreditCard, LogIn, UserPlus, Heart, Star, Scale,
 } from "lucide-react";
 import {
   fetchAllData, dbCreateBrand, dbCreateBrands, dbUpdateBrand, dbDeleteBrand,
@@ -18,6 +23,7 @@ import {
   getProfile, upsertProfile, createStripeCheckout,
   fetchWishlist, addToWishlist, removeFromWishlist,
   fetchReviews, fetchAllReviews, upsertReview,
+  validatePromoCode, fetchPromoCodes, createPromoCode, setPromoCodeActive, deletePromoCode,
 } from "./lib/supabase.js";
 
 /* ---------------------------------- THEME ---------------------------------- */
@@ -217,11 +223,6 @@ function GlobalStyle() {
 
       .btn-magnet { transition: transform .25s cubic-bezier(.2,.8,.2,1), box-shadow .25s ease; }
 
-      /* Custom lens cursor — desktop (fine pointer) only, never on touch devices */
-      .mtr-cursor { position: fixed; top: 0; left: 0; width: 34px; height: 34px; pointer-events: none; z-index: 9999; transition: opacity .2s ease; }
-      .mtr-cursor.hovering { transform-origin: center; }
-      body.mtr-custom-cursor, body.mtr-custom-cursor * { cursor: none !important; }
-
       /* Add-to-cart confetti burst */
       .confetti-piece { position: fixed; top: 0; left: 0; width: 8px; height: 8px; pointer-events: none; z-index: 9998; border-radius: 2px; }
       @keyframes confettiBurst {
@@ -400,7 +401,7 @@ function ProductGallery({ product, holo = false, stroke }) {
 
 /* ---------------------------------- GLASSES 3D (realistic model, hero + scroll story) ---------------------------------- */
 
-function buildWayfarerGroup3D(tintColor) {
+function buildWayfarerGroup3D(tintColor, THREE) {
   const group = new THREE.Group();
   const toXY = (sx, sy) => [sx - 100, -(sy - 45)];
 
@@ -507,137 +508,145 @@ function Glasses3D({ tint = NEON.cyan, mode = "idle", progress = 0, height = 260
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
-    const width = mount.clientWidth || 400;
+    let cancelled = false;
+    let cleanup = () => {};
 
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(50, width / height, 1, 2000);
-    camera.position.set(12, 20, 340);
-    camera.lookAt(0, 4, 0);
+    import("three").then((THREE) => {
+      if (cancelled || !mountRef.current) return;
+      const width = mount.clientWidth || 400;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(50, width / height, 1, 2000);
+      camera.position.set(12, 20, 340);
+      camera.lookAt(0, 4, 0);
 
-    // Fake "studio" environment (gradient sky + a couple of bright softbox panels) baked into a
-    // reflection map. This is what actually sells "3D render" over "flat colored shape": without it,
-    // matte/glossy materials have nothing to reflect and read as flat vector art regardless of lighting.
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    pmrem.compileEquirectangularShader();
-    const envScene = new THREE.Scene();
-    const skyGeo = new THREE.SphereGeometry(60, 24, 16);
-    const posAttr = skyGeo.attributes.position;
-    const skyColors = [];
-    const topC = new THREE.Color(0xbfe4ff);
-    const botC = new THREE.Color(0x050608);
-    for (let i = 0; i < posAttr.count; i++) {
-      const t = (posAttr.getY(i) + 60) / 120;
-      const c = botC.clone().lerp(topC, t);
-      skyColors.push(c.r, c.g, c.b);
-    }
-    skyGeo.setAttribute("color", new THREE.Float32BufferAttribute(skyColors, 3));
-    envScene.add(new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
-    const softbox1 = new THREE.Mesh(new THREE.PlaneGeometry(30, 16), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-    softbox1.position.set(28, 22, -20); softbox1.lookAt(0, 0, 0);
-    envScene.add(softbox1);
-    const softbox2 = new THREE.Mesh(new THREE.PlaneGeometry(20, 12), new THREE.MeshBasicMaterial({ color: new THREE.Color(tint) }));
-    softbox2.position.set(-24, -10, 18); softbox2.lookAt(0, 0, 0);
-    envScene.add(softbox2);
-    const envMap = pmrem.fromScene(envScene, 0.03).texture;
-    pmrem.dispose();
-    scene.environment = envMap;
-    mount.appendChild(renderer.domElement);
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.38));
-
-    const key = new THREE.DirectionalLight(0xffffff, 1.5);
-    key.position.set(140, 180, 220);
-    key.castShadow = true;
-    key.shadow.mapSize.set(1024, 1024);
-    key.shadow.camera.left = -260; key.shadow.camera.right = 260;
-    key.shadow.camera.top = 260; key.shadow.camera.bottom = -260;
-    key.shadow.camera.near = 50; key.shadow.camera.far = 600;
-    key.shadow.bias = -0.001;
-    scene.add(key);
-
-    const fill = new THREE.DirectionalLight(0x88c8ff, 0.3);
-    fill.position.set(-160, -30, 80);
-    scene.add(fill);
-
-    // Rim/back light: separates the silhouette from the background — the single biggest cue that reads as "3D object" vs "flat sticker".
-    scene.add(new THREE.HemisphereLight(0x99ccff, 0x0a0a0c, 0.5));
-
-    const rim = new THREE.DirectionalLight(0xffffff, 1.8);
-    rim.position.set(-60, 80, -220);
-    scene.add(rim);
-
-    const accent = new THREE.PointLight(new THREE.Color(tint), 0.45, 700);
-    accent.position.set(40, 50, 200);
-    scene.add(accent);
-
-    const group = buildWayfarerGroup3D(new THREE.Color(tint));
-    scene.add(group);
-
-    // Contact shadow on an invisible ground plane — grounds the object and reinforces depth.
-    const shadowFloor = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.ShadowMaterial({ opacity: 0.32 }));
-    shadowFloor.rotation.x = -Math.PI / 2;
-    shadowFloor.position.y = -58;
-    shadowFloor.receiveShadow = true;
-    scene.add(shadowFloor);
-
-    const onMouseMove = (e) => {
-      const r = mount.getBoundingClientRect();
-      liveRef.current.mouse.x = ((e.clientX - r.left) / r.width) * 2 - 1;
-      liveRef.current.mouse.y = ((e.clientY - r.top) / r.height) * 2 - 1;
-    };
-    if (mode === "mouse") mount.addEventListener("mousemove", onMouseMove);
-
-    let raf;
-    const clock = new THREE.Clock();
-    const animate = () => {
-      const t = clock.getElapsedTime();
-      if (mode === "idle") {
-        group.rotation.y = BASE_ROT_Y + Math.sin(t * 0.35) * 0.16;
-        group.rotation.x = BASE_ROT_X + Math.sin(t * 0.5) * 0.03;
-      } else if (mode === "mouse") {
-        const { x, y } = liveRef.current.mouse;
-        const targetY = BASE_ROT_Y + x * 0.4;
-        const targetX = BASE_ROT_X - y * 0.16;
-        group.rotation.y += (targetY - group.rotation.y) * 0.06;
-        group.rotation.x += (targetX - group.rotation.x) * 0.06;
-      } else if (mode === "scroll") {
-        const pr = liveRef.current.progress;
-        const targetY = BASE_ROT_Y - 0.55 + pr * 1.1;
-        const targetX = BASE_ROT_X + 0.12 - pr * 0.12;
-        group.rotation.y += (targetY - group.rotation.y) * 0.12;
-        group.rotation.x += (targetX - group.rotation.x) * 0.12;
+      // Fake "studio" environment (gradient sky + a couple of bright softbox panels) baked into a
+      // reflection map. This is what actually sells "3D render" over "flat colored shape": without it,
+      // matte/glossy materials have nothing to reflect and read as flat vector art regardless of lighting.
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      pmrem.compileEquirectangularShader();
+      const envScene = new THREE.Scene();
+      const skyGeo = new THREE.SphereGeometry(60, 24, 16);
+      const posAttr = skyGeo.attributes.position;
+      const skyColors = [];
+      const topC = new THREE.Color(0xbfe4ff);
+      const botC = new THREE.Color(0x050608);
+      for (let i = 0; i < posAttr.count; i++) {
+        const t = (posAttr.getY(i) + 60) / 120;
+        const c = botC.clone().lerp(topC, t);
+        skyColors.push(c.r, c.g, c.b);
       }
-      renderer.render(scene, camera);
-      raf = requestAnimationFrame(animate);
-    };
-    animate();
+      skyGeo.setAttribute("color", new THREE.Float32BufferAttribute(skyColors, 3));
+      envScene.add(new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+      const softbox1 = new THREE.Mesh(new THREE.PlaneGeometry(30, 16), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+      softbox1.position.set(28, 22, -20); softbox1.lookAt(0, 0, 0);
+      envScene.add(softbox1);
+      const softbox2 = new THREE.Mesh(new THREE.PlaneGeometry(20, 12), new THREE.MeshBasicMaterial({ color: new THREE.Color(tint) }));
+      softbox2.position.set(-24, -10, 18); softbox2.lookAt(0, 0, 0);
+      envScene.add(softbox2);
+      const envMap = pmrem.fromScene(envScene, 0.03).texture;
+      pmrem.dispose();
+      scene.environment = envMap;
+      mount.appendChild(renderer.domElement);
 
-    const onResize = () => {
-      const w = mount.clientWidth || width;
-      camera.aspect = w / height;
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, height);
-    };
-    window.addEventListener("resize", onResize);
+      scene.add(new THREE.AmbientLight(0xffffff, 0.38));
 
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("resize", onResize);
-      if (mode === "mouse") mount.removeEventListener("mousemove", onMouseMove);
-      scene.traverse((obj) => {
-        if (obj.geometry) obj.geometry.dispose();
-        if (obj.material) (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach((m) => m.dispose());
-      });
-      renderer.dispose();
-      if (envMap) envMap.dispose();
-      if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
-    };
+      const key = new THREE.DirectionalLight(0xffffff, 1.5);
+      key.position.set(140, 180, 220);
+      key.castShadow = true;
+      key.shadow.mapSize.set(1024, 1024);
+      key.shadow.camera.left = -260; key.shadow.camera.right = 260;
+      key.shadow.camera.top = 260; key.shadow.camera.bottom = -260;
+      key.shadow.camera.near = 50; key.shadow.camera.far = 600;
+      key.shadow.bias = -0.001;
+      scene.add(key);
+
+      const fill = new THREE.DirectionalLight(0x88c8ff, 0.3);
+      fill.position.set(-160, -30, 80);
+      scene.add(fill);
+
+      // Rim/back light: separates the silhouette from the background — the single biggest cue that reads as "3D object" vs "flat sticker".
+      scene.add(new THREE.HemisphereLight(0x99ccff, 0x0a0a0c, 0.5));
+
+      const rim = new THREE.DirectionalLight(0xffffff, 1.8);
+      rim.position.set(-60, 80, -220);
+      scene.add(rim);
+
+      const accent = new THREE.PointLight(new THREE.Color(tint), 0.45, 700);
+      accent.position.set(40, 50, 200);
+      scene.add(accent);
+
+      const group = buildWayfarerGroup3D(new THREE.Color(tint), THREE);
+      scene.add(group);
+
+      // Contact shadow on an invisible ground plane — grounds the object and reinforces depth.
+      const shadowFloor = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.ShadowMaterial({ opacity: 0.32 }));
+      shadowFloor.rotation.x = -Math.PI / 2;
+      shadowFloor.position.y = -58;
+      shadowFloor.receiveShadow = true;
+      scene.add(shadowFloor);
+
+      const onMouseMove = (e) => {
+        const r = mount.getBoundingClientRect();
+        liveRef.current.mouse.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+        liveRef.current.mouse.y = ((e.clientY - r.top) / r.height) * 2 - 1;
+      };
+      if (mode === "mouse") mount.addEventListener("mousemove", onMouseMove);
+
+      let raf;
+      const clock = new THREE.Clock();
+      const animate = () => {
+        const t = clock.getElapsedTime();
+        if (mode === "idle") {
+          group.rotation.y = BASE_ROT_Y + Math.sin(t * 0.35) * 0.16;
+          group.rotation.x = BASE_ROT_X + Math.sin(t * 0.5) * 0.03;
+        } else if (mode === "mouse") {
+          const { x, y } = liveRef.current.mouse;
+          const targetY = BASE_ROT_Y + x * 0.4;
+          const targetX = BASE_ROT_X - y * 0.16;
+          group.rotation.y += (targetY - group.rotation.y) * 0.06;
+          group.rotation.x += (targetX - group.rotation.x) * 0.06;
+        } else if (mode === "scroll") {
+          const pr = liveRef.current.progress;
+          const targetY = BASE_ROT_Y - 0.55 + pr * 1.1;
+          const targetX = BASE_ROT_X + 0.12 - pr * 0.12;
+          group.rotation.y += (targetY - group.rotation.y) * 0.12;
+          group.rotation.x += (targetX - group.rotation.x) * 0.12;
+        }
+        renderer.render(scene, camera);
+        raf = requestAnimationFrame(animate);
+      };
+      animate();
+
+      const onResize = () => {
+        const w = mount.clientWidth || width;
+        camera.aspect = w / height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, height);
+      };
+      window.addEventListener("resize", onResize);
+
+      cleanup = () => {
+        cancelAnimationFrame(raf);
+        window.removeEventListener("resize", onResize);
+        if (mode === "mouse") mount.removeEventListener("mousemove", onMouseMove);
+        scene.traverse((obj) => {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach((m) => m.dispose());
+        });
+        renderer.dispose();
+        if (envMap) envMap.dispose();
+        if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
+      };
+    });
+
+    return () => { cancelled = true; cleanup(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, tint]);
 
@@ -695,6 +704,14 @@ function ShippingBadge({ size = 11 }) {
   );
 }
 
+function PriceMatchBadge({ size = 11 }) {
+  return (
+    <span className="mtr-mono inline-flex items-center gap-1 font-bold uppercase tracking-wide" style={{ fontSize: size, color: NEON.yellow }}>
+      <Sparkles size={size + 2} /> Meilleur prix garanti
+    </span>
+  );
+}
+
 // Renders only badges backed by real data — no invented numbers. `insights` comes from
 // productInsights in Root (computed from actual paid orders / creation date / real stock count).
 function ProductBadges({ insights, className = "" }) {
@@ -746,13 +763,13 @@ function AnnounceBar() {
         <div className="mesh-blob" style={{ width: 260, height: 260, top: -110, right: "8%", background: NEON.pink, opacity: 0.2, mixBlendMode: "screen", animationDelay: "-8s" }} />
       </div>
       <p className="relative mtr-mono announce-text text-[11px] md:text-xs font-bold uppercase tracking-[0.16em] px-4">
-        🚚 Livraison incluse sur tout le catalogue · Prix imbattables · Livraison rapide 🚚
+        💸 Parmi les prix les plus bas du marché · Prix discount toute l'année · Livraison incluse 💸
       </p>
     </div>
   );
 }
 
-function SiteHeader({ page, setPage, onGoCategory, cartCount, onOpenCart, onGoAdmin, mobileOpen, setMobileOpen, session, loyaltyPoints, wishlistCount, onOpenWishlist }) {
+function SiteHeader({ page, setPage, onGoCategory, cartCount, onOpenCart, onGoAdmin, mobileOpen, setMobileOpen, session, loyaltyPoints, wishlistCount, onOpenWishlist, onOpenAccount }) {
   const { p } = useTheme();
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
@@ -801,6 +818,9 @@ function SiteHeader({ page, setPage, onGoCategory, cartCount, onOpenCart, onGoAd
             </span>
           )}
           <button onClick={onGoAdmin} className="hidden lg:block text-xs mtr-mono uppercase tracking-wide" style={{ color: alpha(p.text, 0.4) }}>Espace pro</button>
+          <button onClick={onOpenAccount} className="btn-magnet p-2.5 rounded-full" style={{ color: p.text, background: alpha(p.text, 0.06) }} aria-label="Mon compte">
+            <User size={19} />
+          </button>
           <button onClick={onOpenWishlist} className="btn-magnet relative p-2.5 rounded-full" style={{ color: p.text, background: alpha(p.text, 0.06) }} aria-label="Liste d'envies">
             <Heart size={19} />
             {wishlistCount > 0 && <span className="absolute -top-1 -right-1 text-[10px] w-4.5 h-4.5 min-w-[18px] min-h-[18px] rounded-full flex items-center justify-center font-bold" style={{ background: NEON.pink, color: "#07080A" }}>{wishlistCount}</span>}
@@ -869,8 +889,8 @@ function Hero({ setPage, featured, brands, onOpenProduct }) {
             Des montures<br />signées.<br /><span className="chroma">Point.</span>
           </h1>
           <p className="mt-6 text-base md:text-lg max-w-md" style={{ color: alpha(p.text, 0.6) }}>
-            Ray-Ban, Oakley, Prada, Persol, Gucci, Carrera — un catalogue resserré,
-            chaque référence vérifiée avant expédition. Pas de contrefaçon, pas de compromis.
+            Ray-Ban, Oakley, Prada, Persol, Gucci, Carrera — aux prix parmi les plus bas
+            du marché, toute l'année. Chaque référence vérifiée. Pas de contrefaçon, pas de compromis.
           </p>
           <div className="mt-9 flex items-center gap-5 flex-wrap">
             <NeonButton onClick={() => setPage("catalogue")} className="px-7 py-3.5 rounded-full inline-flex items-center gap-2 group">
@@ -1237,6 +1257,8 @@ function StatItem({ value, suffix = "", label, active, color }) {
 function TrustBand() {
   const { p } = useTheme();
   const items = [
+    { title: "Prix direct fournisseur", desc: "Aucun intermédiaire, aucun stock à financer : on répercute l'économie sur le prix, toute l'année.", accent: NEON.orange },
+    { title: "Meilleur prix garanti", desc: "Trouvé moins cher ailleurs sur un modèle identique ? Contactez-nous, on vous rembourse la différence.", accent: NEON.yellow },
     { title: "Authenticité garantie", desc: "Chaque paire est vérifiée et accompagnée de son certificat fournisseur.", accent: NEON.cyan },
     { title: "Livraison suivie", desc: "Expédition trackée, délais annoncés fournisseur par fournisseur.", accent: NEON.pink },
     { title: "Livraison rapide", desc: "Commande préparée et expédiée sous 48h ouvrées par nos fournisseurs agréés.", accent: NEON.lime },
@@ -1247,7 +1269,7 @@ function TrustBand() {
     <section style={{ background: p.bg2, position: "relative", overflow: "hidden" }} className="py-20 md:py-24">
       <SectionGlow variant="corners" />
       <div className="relative max-w-6xl mx-auto px-5 md:px-8">
-        <div ref={ref} className="grid md:grid-cols-3 gap-10 mb-16">
+        <div ref={ref} className="grid sm:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-5 mb-16">
           {items.map((it, i) => (
             <div key={it.title} className={`reveal ${visible ? "visible" : ""}`} style={{ transitionDelay: `${i * 90}ms` }}>
               <div className="mtr-mono text-xs mb-3" style={{ color: it.accent }}>0{i + 1}</div>
@@ -1576,11 +1598,49 @@ function ReviewsSection({ product, reviews, session, onSubmitReview }) {
   );
 }
 
-function ProductModal({ product, brand, onClose, onAddToCart, insights, isWishlisted, onToggleWishlist, reviews, session, onSubmitReview, onView }) {
+function ProductModal({ product, brand, onClose, onAddToCart, insights, isWishlisted, onToggleWishlist, reviews, session, onSubmitReview, onView, isCompared, onToggleCompare }) {
   const { p } = useTheme();
   const [qty, setQty] = useState(1);
   useEffect(() => setQty(1), [product]);
   useEffect(() => { if (product) onView?.(product.id); }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // SEO: dynamic page title + JSON-LD Product structured data (price, availability, rating) so
+  // Google can show rich results. Note: this is a single-page app with no per-product URL, so a
+  // search engine can index this content but can't deep-link straight to one product yet — real
+  // per-product URLs would need client-side routing, a separate, bigger change.
+  useEffect(() => {
+    if (!product) return;
+    const prevTitle = document.title;
+    document.title = `${product.name} — ${euro(product.price)} | MONTURE`;
+    let meta = document.querySelector('meta[name="description"]');
+    const prevDesc = meta?.getAttribute("content") || "";
+    if (!meta) { meta = document.createElement("meta"); meta.setAttribute("name", "description"); document.head.appendChild(meta); }
+    meta.setAttribute("content", product.description || `${product.name} — ${euro(product.price)}, livraison incluse. Authenticité garantie.`);
+
+    const script = document.createElement("script");
+    script.type = "application/ld+json";
+    script.text = JSON.stringify({
+      "@context": "https://schema.org/",
+      "@type": "Product",
+      name: product.name,
+      image: product.photos && product.photos.length ? product.photos : undefined,
+      description: product.description || undefined,
+      offers: {
+        "@type": "Offer",
+        priceCurrency: "EUR",
+        price: product.price,
+        availability: product.stock === "Rupture" ? "https://schema.org/OutOfStock" : "https://schema.org/InStock",
+      },
+      aggregateRating: insights?.avgRating != null ? { "@type": "AggregateRating", ratingValue: insights.avgRating.toFixed(1), reviewCount: insights.reviewCount } : undefined,
+    });
+    document.head.appendChild(script);
+
+    return () => {
+      document.title = prevTitle;
+      if (meta) meta.setAttribute("content", prevDesc);
+      script.remove();
+    };
+  }, [product]);
   if (!product) return null;
   const accent = BRAND_ACCENT[product.brandId] || PRIMARY;
   const productReviews = (reviews || []).filter((r) => r.productId === product.id);
@@ -1593,6 +1653,11 @@ function ProductModal({ product, brand, onClose, onAddToCart, insights, isWishli
         {onToggleWishlist && (
           <button onClick={() => onToggleWishlist(product.id)} className="absolute top-4 right-16 z-10 p-2 rounded-full btn-magnet" style={{ background: p.bg3 }} aria-label="Ajouter à la liste d'envies">
             <Heart size={18} style={{ color: isWishlisted ? NEON.pink : p.text, fill: isWishlisted ? NEON.pink : "none" }} />
+          </button>
+        )}
+        {onToggleCompare && (
+          <button onClick={() => onToggleCompare(product.id)} className="absolute top-4 right-28 z-10 p-2 rounded-full btn-magnet" style={{ background: p.bg3 }} aria-label="Ajouter au comparateur">
+            <Scale size={18} style={{ color: isCompared ? NEON.violet : p.text }} />
           </button>
         )}
         <div className="grid md:grid-cols-2">
@@ -1611,7 +1676,7 @@ function ProductModal({ product, brand, onClose, onAddToCart, insights, isWishli
             )}
             {insights && (insights.isBestSeller || insights.isNew || insights.lowStock) && <ProductBadges insights={insights} className="mt-2" />}
             <div className="mt-3"><PriceTag price={product.price} compareAt={product.compareAtPrice} className="text-2xl font-extrabold" /></div>
-            <div className="mt-2"><ShippingBadge /></div>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1"><ShippingBadge /><PriceMatchBadge /></div>
             {product.description && <p className="mt-3 text-sm" style={{ color: alpha(p.text, 0.65) }}>{product.description}</p>}
             <div className="mt-6">
               <SpecRow label="Calibre" value={product.calibre} />
@@ -1645,6 +1710,110 @@ function ProductModal({ product, brand, onClose, onAddToCart, insights, isWishli
 }
 
 /* ---------------------------------- PUBLIC: CART + CHECKOUT ---------------------------------- */
+
+function AccountDrawer({ open, onClose, session, profile, orders, onSignIn, onSignUp, onSignOut }) {
+  const { p } = useTheme();
+  const [mode, setMode] = useState("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => { if (open) { setError(""); setNotice(""); setEmail(""); setPassword(""); setMode("signin"); } }, [open]);
+
+  if (!open) return null;
+  const inputStyle = { border: `1px solid ${p.borderStrong}`, background: p.bg3, color: p.text };
+
+  const submit = async () => {
+    if (!email.trim() || !password) { setError("Renseignez e-mail et mot de passe."); return; }
+    setPending(true); setError("");
+    try {
+      if (mode === "signup") {
+        const s = await onSignUp(email.trim(), password);
+        if (!s) { setNotice("Compte créé. Si la confirmation par e-mail est activée, vérifiez votre boîte mail puis reconnectez-vous."); setMode("signin"); setPending(false); return; }
+      } else {
+        await onSignIn(email.trim(), password);
+      }
+    } catch (err) {
+      setError(err.message === "Invalid login credentials" ? "Identifiant ou mot de passe incorrect." : (err.message || "Échec de connexion."));
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const myOrders = session ? orders.filter((o) => o.userId === session.user.id) : [];
+
+  return (
+    <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-black/45 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute right-0 top-0 bottom-0 w-full max-w-md flex flex-col" style={{ background: p.bg2, borderLeft: `1px solid ${p.border}`, animation: "mtrSlideIn .4s cubic-bezier(.2,.8,.2,1)" }}>
+        <div className="flex items-center justify-between px-6 py-5 border-b" style={{ borderColor: p.border }}>
+          <span className="font-bold flex items-center gap-2" style={{ color: p.text }}><User size={16} /> Mon compte</span>
+          <button onClick={onClose}><X size={20} style={{ color: p.text }} /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          {!session ? (
+            <div>
+              <div className="flex rounded-full p-1 mb-5" style={{ background: p.bg3 }}>
+                <button onClick={() => setMode("signin")} className="flex-1 py-2 rounded-full text-sm font-semibold transition-colors" style={{ background: mode === "signin" ? p.bg2 : "transparent", color: p.text }}>Se connecter</button>
+                <button onClick={() => setMode("signup")} className="flex-1 py-2 rounded-full text-sm font-semibold transition-colors" style={{ background: mode === "signup" ? p.bg2 : "transparent", color: p.text }}>Créer un compte</button>
+              </div>
+              {notice && <p className="text-sm mb-4 p-3 rounded-xl" style={{ background: alpha(NEON.yellow, 0.14), color: p.text }}>{notice}</p>}
+              <div className="space-y-3">
+                <input placeholder="Adresse e-mail" value={email} onChange={(e) => setEmail(e.target.value)} className="mtr-input w-full px-4 py-3 rounded-xl text-sm outline-none" style={inputStyle} />
+                <input placeholder="Mot de passe" type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} className="mtr-input w-full px-4 py-3 rounded-xl text-sm outline-none" style={inputStyle} />
+              </div>
+              {error && <p className="text-sm mt-3" style={{ color: NEG }}>{error}</p>}
+              <NeonButton onClick={submit} disabled={pending} className="w-full mt-5 py-3 rounded-full flex items-center justify-center gap-2">
+                {pending ? <><Loader2 size={16} className="animate-spin" /> Patientez…</> : mode === "signup" ? "Créer mon compte" : "Me connecter"}
+              </NeonButton>
+            </div>
+          ) : (
+            <div>
+              <div className="p-4 rounded-xl mb-5" style={{ background: p.bg3 }}>
+                <div className="text-xs mtr-mono uppercase tracking-wide" style={{ color: p.steel }}>Connecté</div>
+                <div className="text-sm font-semibold mt-1" style={{ color: p.text }}>{session.user.email}</div>
+                {profile?.loyaltyPoints > 0 && (
+                  <div className="text-xs mt-1.5 inline-flex items-center gap-1 font-bold" style={{ color: NEON.orange }}><Sparkles size={12} /> {profile.loyaltyPoints} points de fidélité</div>
+                )}
+              </div>
+              <div className="text-xs mtr-mono uppercase tracking-wide mb-3" style={{ color: p.steel }}>Mes commandes ({myOrders.length})</div>
+              {myOrders.length === 0 ? (
+                <p className="text-sm" style={{ color: p.steel }}>Aucune commande pour le moment.</p>
+              ) : (
+                <div className="space-y-3">
+                  {myOrders.map((o) => {
+                    const qty = o.items.reduce((s, it) => s + it.qty, 0);
+                    return (
+                      <div key={o.id} className="p-3 rounded-xl" style={{ background: p.bg3 }}>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-semibold" style={{ color: p.text }}>#{o.id.slice(-6).toUpperCase()}</span>
+                          <span style={{ color: p.steel }}>{o.date}</span>
+                        </div>
+                        <div className="flex items-center justify-between mt-1 text-xs">
+                          <span style={{ color: p.steel }}>{qty} article{qty > 1 ? "s" : ""}</span>
+                          <span className="font-bold" style={{ color: p.text }}>{euro(o.total || 0)}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <Pill style={{ background: alpha(o.paymentStatus === "paid" ? NEON.lime : NEON.orange, 0.14), color: o.paymentStatus === "paid" ? NEON.lime : NEON.orange }}>
+                            {o.paymentStatus === "paid" ? "Payée" : "En attente"}
+                          </Pill>
+                          <Pill style={{ background: p.bg2, color: p.steel }}>{o.status}</Pill>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <button onClick={onSignOut} className="w-full mt-6 py-2.5 rounded-full text-sm font-medium" style={{ border: `1px solid ${p.borderStrong}`, color: p.text }}>Déconnexion</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function WishlistDrawer({ open, onClose, wishlistIds, products, brands, onRemove, onAddToCart, onOpenProduct }) {
   const { p } = useTheme();
@@ -1748,6 +1917,207 @@ function CartDrawer({ open, onClose, cart, products, brands, updateQty, removeIt
   );
 }
 
+// Floating bar that appears as soon as at least one product is added to the comparison.
+function CompareBar({ compareIds, products, onOpen, onClear }) {
+  const { p } = useTheme();
+  if (compareIds.length === 0) return null;
+  const items = compareIds.map((id) => products.find((pr) => pr.id === id)).filter(Boolean);
+  return (
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 py-3 rounded-full shadow-lg" style={{ background: p.bg2, border: `1px solid ${p.borderStrong}`, boxShadow: "0 12px 32px -8px rgba(0,0,0,.35)" }}>
+      <div className="flex -space-x-2">
+        {items.map((pr) => (
+          <div key={pr.id} className="w-8 h-8 rounded-full overflow-hidden p-1" style={{ background: p.bg3, border: `2px solid ${p.bg2}` }}>
+            <ProductVisual product={pr} stroke={alpha(p.text, 0.5)} />
+          </div>
+        ))}
+      </div>
+      <span className="text-sm font-medium" style={{ color: p.text }}>{items.length} produit{items.length > 1 ? "s" : ""}</span>
+      <NeonButton onClick={onOpen} disabled={items.length < 2} className="px-4 py-2 rounded-full text-xs">Comparer</NeonButton>
+      <button onClick={onClear} className="p-1.5" style={{ color: p.steel }} aria-label="Vider le comparateur"><X size={16} /></button>
+    </div>
+  );
+}
+
+function CompareModal({ open, onClose, compareIds, products, brands, productInsights, onRemove }) {
+  const { p } = useTheme();
+  if (!open) return null;
+  const items = compareIds.map((id) => products.find((pr) => pr.id === id)).filter(Boolean);
+  const rows = [
+    { label: "Marque", get: (pr) => brands.find((b) => b.id === pr.brandId)?.name || "—" },
+    { label: "Prix", get: (pr) => <PriceTag price={pr.price} compareAt={pr.compareAtPrice} className="font-bold" /> },
+    { label: "Note", get: (pr) => (productInsights?.[pr.id]?.avgRating != null ? <StarRating value={productInsights[pr.id].avgRating} size={12} /> : "—") },
+    { label: "Catégorie", get: (pr) => pr.category },
+    { label: "Genre", get: (pr) => pr.gender },
+    { label: "Calibre", get: (pr) => pr.calibre || "—" },
+    { label: "Matière", get: (pr) => pr.material || "—" },
+    { label: "Coloris", get: (pr) => pr.colorName || "—" },
+    { label: "Stock", get: (pr) => pr.stock },
+  ];
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl p-6 md:p-8" style={{ background: p.bg2, border: `1px solid ${p.border}`, animation: "mtrPop .35s cubic-bezier(.2,.8,.2,1)" }}>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="mtr-display text-xl font-bold flex items-center gap-2" style={{ color: p.text }}><Scale size={18} /> Comparateur</h3>
+          <button onClick={onClose}><X size={20} style={{ color: p.text }} /></button>
+        </div>
+        <div className="overflow-x-auto scroll-thin">
+          <table className="w-full text-sm" style={{ minWidth: items.length * 180 }}>
+            <thead>
+              <tr>
+                <th className="w-32"></th>
+                {items.map((pr) => (
+                  <th key={pr.id} className="text-left p-3 align-top" style={{ minWidth: 180 }}>
+                    <div className="relative rounded-xl p-3" style={{ background: p.bg3 }}>
+                      <button onClick={() => onRemove(pr.id)} className="absolute top-1.5 right-1.5 p-1 rounded-full" style={{ background: alpha(p.text, 0.08) }}><X size={12} style={{ color: p.steel }} /></button>
+                      <div className="h-16"><ProductVisual product={pr} stroke={alpha(p.text, 0.5)} /></div>
+                      <div className="mt-2 text-xs font-bold" style={{ color: p.text }}>{pr.name}</div>
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.label} className="border-t" style={{ borderColor: p.border }}>
+                  <td className="p-3 mtr-mono text-[11px] uppercase tracking-wide" style={{ color: p.steel }}>{row.label}</td>
+                  {items.map((pr) => <td key={pr.id} className="p-3" style={{ color: p.text }}>{row.get(pr)}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// "Trouvez votre monture" quiz. Every question maps to a real, existing catalog filter — no
+// invented "AI style match" score. If the exact combination has zero results, filters are relaxed
+// one by one (starting with the least essential) so the quiz never dead-ends with an empty screen.
+function QuizWidget({ open, onClose, products, brands, onOpenProduct, onGoCategory }) {
+  const { p } = useTheme();
+  const [step, setStep] = useState(0);
+  const [answers, setAnswers] = useState({ category: null, gender: null, shape: null, price: null });
+
+  const questions = [
+    { key: "category", label: "Vous cherchez plutôt…", options: [["Solaire", "Des solaires"], ["Optique", "Des lunettes de vue"]] },
+    { key: "gender", label: "Pour qui ?", options: [["Femme", "Femme"], ["Homme", "Homme"], ["Mixte", "Peu importe"]] },
+    { key: "shape", label: "Quelle forme vous attire ?", options: [["round", "Ronde"], ["square", "Carrée"], [null, "Peu importe"]] },
+    { key: "price", label: "Votre budget ?", options: [["-50", "Moins de 50 €"], ["50-100", "50 à 100 €"], ["100-150", "100 à 150 €"], [null, "Peu importe"]] },
+  ];
+
+  const select = (key, value) => {
+    setAnswers((a) => ({ ...a, [key]: value }));
+    setStep((s) => s + 1);
+  };
+  const reset = () => { setStep(0); setAnswers({ category: null, gender: null, shape: null, price: null }); };
+  const close = () => { reset(); onClose(); };
+
+  const results = useMemo(() => {
+    if (step < questions.length) return [];
+    const pool = products.filter((pr) => pr.photos && pr.photos.length > 0);
+    const filters = [];
+    if (answers.category) filters.push((pr) => pr.category === answers.category);
+    if (answers.gender && answers.gender !== "Mixte") filters.push((pr) => pr.gender === answers.gender || pr.gender === "Mixte");
+    if (answers.shape) filters.push((pr) => pr.shape === answers.shape);
+    if (answers.price) {
+      const [lo, hi] = answers.price === "-50" ? [0, 50] : answers.price === "50-100" ? [50, 100] : [100, 150];
+      filters.push((pr) => pr.price >= lo && pr.price <= hi);
+    }
+    const applied = [...filters];
+    let matched = pool;
+    while (applied.length) {
+      matched = pool.filter((pr) => applied.every((f) => f(pr)));
+      if (matched.length > 0) break;
+      applied.pop(); // relax the least essential filter (price, then shape…) until something matches
+    }
+    return (matched.length ? matched : pool).slice(0, 8);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, answers, products]);
+
+  if (!open) return null;
+  const progress = Math.min(step, questions.length) / questions.length;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={close} />
+      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl p-8" style={{ background: p.bg2, border: `1px solid ${p.border}`, animation: "mtrPop .35s cubic-bezier(.2,.8,.2,1)" }}>
+        <button onClick={close} className="absolute top-4 right-4 p-2 rounded-full btn-magnet" style={{ background: p.bg3 }}><X size={18} style={{ color: p.text }} /></button>
+
+        <div className="h-1.5 rounded-full overflow-hidden mb-6" style={{ background: p.bg3 }}>
+          <div className="h-full rounded-full" style={{ width: `${progress * 100}%`, background: `linear-gradient(90deg, ${NEON.cyan}, ${NEON.pink})`, transition: "width .35s ease" }} />
+        </div>
+
+        {step < questions.length ? (
+          <div>
+            <Eyebrow>Question {step + 1}/{questions.length}</Eyebrow>
+            <h3 className="mtr-display text-2xl font-bold mb-6" style={{ color: p.text }}>{questions[step].label}</h3>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {questions[step].options.map(([val, label]) => (
+                <button key={label} onClick={() => select(questions[step].key, val)} className="neon-border p-5 rounded-2xl text-left font-semibold btn-magnet" style={{ background: p.bg3, border: `1px solid ${p.border}`, color: p.text, "--edge": NEON.cyan }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div>
+            <Eyebrow>Vos résultats</Eyebrow>
+            <h3 className="mtr-display text-2xl font-bold mb-6" style={{ color: p.text }}>{results.length} monture{results.length > 1 ? "s" : ""} pour vous</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+              {results.map((pr) => {
+                const brand = brands.find((b) => b.id === pr.brandId);
+                return (
+                  <button key={pr.id} onClick={() => { onOpenProduct(pr); close(); }} className="rounded-xl overflow-hidden text-left card-lift" style={{ background: p.bg3, border: `1px solid ${p.border}` }}>
+                    <div className="p-3"><ProductVisual product={pr} stroke={alpha(p.text, 0.5)} /></div>
+                    <div className="px-3 pb-3">
+                      <div className="text-[10px] mtr-mono uppercase" style={{ color: BRAND_ACCENT[pr.brandId] || PRIMARY }}>{brand?.name}</div>
+                      <div className="text-xs font-semibold truncate" style={{ color: p.text }}>{pr.name}</div>
+                      <div className="text-xs font-bold mt-1" style={{ color: p.text }}>{euro(pr.price)}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex gap-3">
+              <button onClick={reset} className="flex-1 py-3 rounded-full font-semibold text-sm" style={{ border: `1px solid ${p.borderStrong}`, color: p.text }}>Refaire le quiz</button>
+              <NeonButton onClick={() => { onGoCategory(answers.category || "Tous", answers.gender || "Tous"); close(); }} className="flex-1 py-3 rounded-full">Voir toute la sélection</NeonButton>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Compact homepage banner that opens the quiz.
+function QuizBanner({ onOpen }) {
+  const { p, dark } = useTheme();
+  const [ref, visible] = useReveal(0.3);
+  return (
+    <section style={{ background: p.bg2 }} className="py-14">
+      <div ref={ref} className={`reveal ${visible ? "visible" : ""} max-w-6xl mx-auto px-5 md:px-8`}>
+        <button
+          onClick={onOpen}
+          className="neon-border card-lift w-full rounded-3xl p-8 md:p-10 flex flex-col md:flex-row items-center justify-between gap-5 text-left relative overflow-hidden"
+          style={{ background: p.bg, border: `1px solid ${dark ? p.border : alpha(NEON.violet, 0.35)}`, "--edge": NEON.violet }}
+        >
+          <div className="mesh-bg"><div className="mesh-blob" style={{ width: 300, height: 300, top: -100, left: "10%", background: NEON.violet, opacity: dark ? 0.18 : 0.32, mixBlendMode: dark ? "screen" : "multiply" }} /></div>
+          <div className="relative">
+            <Eyebrow color={NEON.violet}>30 secondes chrono</Eyebrow>
+            <h2 className="mtr-display text-2xl md:text-3xl font-extrabold" style={{ color: p.text }}>Pas sûr de votre choix ? Trouvez votre monture.</h2>
+            <p className="mt-2 text-sm" style={{ color: alpha(p.text, 0.65) }}>4 questions rapides, une sélection sur mesure tirée de notre vrai catalogue.</p>
+          </div>
+          <div className="relative shrink-0 inline-flex items-center gap-2 px-6 py-3.5 rounded-full font-semibold text-sm" style={{ background: NEON.violet, color: "#07080A" }}>
+            <Sparkles size={16} /> Faire le quiz
+          </div>
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function CheckoutWizard({ open, onClose, cart, products, session, profile, onProfileSaved, onStartCheckout }) {
   const { p } = useTheme();
   const [step, setStep] = useState("account");
@@ -1764,6 +2134,11 @@ function CheckoutWizard({ open, onClose, cart, products, session, profile, onPro
 
   const [payPending, setPayPending] = useState(false);
   const [payError, setPayError] = useState("");
+
+  const [promoInput, setPromoInput] = useState("");
+  const [promo, setPromo] = useState(null); // { code, discountPercent }
+  const [promoError, setPromoError] = useState("");
+  const [promoChecking, setPromoChecking] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -1782,8 +2157,25 @@ function CheckoutWizard({ open, onClose, cart, products, session, profile, onPro
 
   const lines = cart.map((c) => ({ ...c, product: products.find((pr) => pr.id === c.productId) }));
   const subtotal = lines.reduce((s, l) => s + (l.product?.price || 0) * l.qty, 0);
+  const discountAmount = promo ? subtotal * (promo.discountPercent / 100) : 0;
+  const total = subtotal - discountAmount;
   const inputStyle = { border: `1px solid ${p.borderStrong}`, background: p.bg3, color: p.text };
   const inputCls = "mtr-input w-full px-4 py-3 rounded-xl text-sm outline-none";
+
+  const applyPromo = async () => {
+    if (!promoInput.trim()) return;
+    setPromoChecking(true); setPromoError("");
+    try {
+      const result = await validatePromoCode(promoInput);
+      if (!result.valid) { setPromoError(result.reason); setPromo(null); return; }
+      setPromo({ code: result.promo.code, discountPercent: result.promo.discountPercent });
+      setPromoInput("");
+    } catch (err) {
+      setPromoError(err.message || "Échec de la vérification du code.");
+    } finally {
+      setPromoChecking(false);
+    }
+  };
 
   const submitAuth = async () => {
     if (!email.trim() || !password) { setAuthError("Renseignez e-mail et mot de passe."); return; }
@@ -1825,7 +2217,7 @@ function CheckoutWizard({ open, onClose, cart, products, session, profile, onPro
   const submitPayment = async () => {
     setPayPending(true); setPayError("");
     try {
-      await onStartCheckout(address); // redirects to Stripe on success — nothing left to render after
+      await onStartCheckout(address, promo); // redirects to Stripe on success — nothing left to render after
     } catch (err) {
       setPayError(err.message || "Échec de la préparation du paiement.");
       setPayPending(false);
@@ -1899,6 +2291,31 @@ function CheckoutWizard({ open, onClose, cart, products, session, profile, onPro
           <div>
             <h3 className="mtr-display text-xl font-bold mb-1" style={{ color: p.text }}>Paiement sécurisé</h3>
             <p className="text-sm mb-5" style={{ color: p.steel }}>Vous allez être redirigé vers Stripe pour finaliser le paiement.</p>
+
+            <div className="mb-4">
+              {promo ? (
+                <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: alpha(NEON.lime, 0.12) }}>
+                  <span className="text-sm font-semibold" style={{ color: p.text }}>Code <strong>{promo.code}</strong> appliqué (-{promo.discountPercent}%)</span>
+                  <button onClick={() => setPromo(null)} className="text-xs font-medium" style={{ color: NEG }}>Retirer</button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <input
+                    placeholder="Code promo (optionnel)"
+                    value={promoInput}
+                    onChange={(e) => setPromoInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), applyPromo())}
+                    className={inputCls}
+                    style={inputStyle}
+                  />
+                  <button onClick={applyPromo} disabled={promoChecking} className="px-4 rounded-xl text-sm font-medium shrink-0" style={{ border: `1px solid ${p.borderStrong}`, color: p.text }}>
+                    {promoChecking ? <Loader2 size={14} className="animate-spin" /> : "Appliquer"}
+                  </button>
+                </div>
+              )}
+              {promoError && <p className="text-xs mt-1.5" style={{ color: NEG }}>{promoError}</p>}
+            </div>
+
             <div className="rounded-2xl p-4 mb-5 space-y-2" style={{ background: p.bg3 }}>
               {lines.map((l) => (
                 <div key={l.productId} className="flex items-center justify-between text-sm">
@@ -1906,13 +2323,19 @@ function CheckoutWizard({ open, onClose, cart, products, session, profile, onPro
                   <span style={{ color: p.steel }}>{euro((l.product?.price || 0) * l.qty)}</span>
                 </div>
               ))}
+              {promo && (
+                <div className="flex items-center justify-between text-sm" style={{ color: NEON.lime }}>
+                  <span>Remise ({promo.code})</span>
+                  <span>-{euro(discountAmount)}</span>
+                </div>
+              )}
               <div className="flex items-center justify-between pt-2 mt-2 border-t font-bold" style={{ borderColor: p.border, color: p.text }}>
-                <span>Total</span><span>{euro(subtotal)}</span>
+                <span>Total</span><span>{euro(total)}</span>
               </div>
             </div>
             {payError && <p className="text-sm mb-3" style={{ color: NEG }}>{payError}</p>}
             <NeonButton onClick={submitPayment} disabled={payPending} className="w-full py-3 rounded-full flex items-center justify-center gap-2">
-              {payPending ? <><Loader2 size={16} className="animate-spin" /> Redirection…</> : <><CreditCard size={16} /> Payer {euro(subtotal)} avec Stripe</>}
+              {payPending ? <><Loader2 size={16} className="animate-spin" /> Redirection…</> : <><CreditCard size={16} /> Payer {euro(total)} avec Stripe</>}
             </NeonButton>
             <p className="text-[11px] mt-3 text-center" style={{ color: p.steel }}>Paiement traité par Stripe — aucune donnée bancaire n'est stockée sur ce site.</p>
           </div>
@@ -1980,6 +2403,7 @@ function AdminShell({ tab, setTab, onLogout, onBackToSite, children }) {
     { id: "brands", label: "Marques", icon: Tags },
     { id: "suppliers", label: "Fournisseurs", icon: Truck },
     { id: "orders", label: "Commandes", icon: ClipboardList },
+    { id: "promos", label: "Codes promo", icon: Sparkles },
   ];
   return (
     <div className="min-h-screen flex flex-col md:flex-row" style={{ background: p.bg }}>
@@ -2474,8 +2898,9 @@ function ImportWizard({ open, onClose, brands, suppliers, onImport }) {
       reader.readAsText(file);
     } else {
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         try {
+          const XLSX = await import("xlsx");
           const wb = XLSX.read(e.target.result, { type: "array" });
           const sheet = wb.Sheets[wb.SheetNames[0]];
           const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
@@ -3091,6 +3516,111 @@ function AdminSuppliers({ suppliers, setSuppliers, brands }) {
 
 /* ---------------------------------- ADMIN: ORDERS ---------------------------------- */
 
+function AdminPromoCodes() {
+  const { p } = useTheme();
+  const [promos, setPromos] = useState(null); // null = loading
+  const [error, setError] = useState("");
+  const [form, setForm] = useState({ code: "", discountPercent: "", maxUses: "", expiresAt: "" });
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    fetchPromoCodes().then(setPromos).catch((err) => setError(err.message || "Échec du chargement."));
+  }, []);
+
+  const create = async () => {
+    if (!form.code.trim() || !form.discountPercent) { setError("Code et pourcentage de remise obligatoires."); return; }
+    setCreating(true); setError("");
+    try {
+      const created = await createPromoCode({
+        code: form.code, discountPercent: Number(form.discountPercent),
+        maxUses: form.maxUses ? Number(form.maxUses) : null,
+        expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : null,
+      });
+      setPromos((ps) => [created, ...ps]);
+      setForm({ code: "", discountPercent: "", maxUses: "", expiresAt: "" });
+    } catch (err) {
+      setError(err.message?.includes("duplicate") ? "Ce code existe déjà." : (err.message || "Échec de la création."));
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const toggleActive = async (code, active) => {
+    setPromos((ps) => ps.map((pr) => (pr.code === code ? { ...pr, active } : pr)));
+    try { await setPromoCodeActive(code, active); } catch (err) { setError(err.message || "Échec."); }
+  };
+  const remove = async (code) => {
+    setPromos((ps) => ps.filter((pr) => pr.code !== code));
+    try { await deletePromoCode(code); } catch (err) { setError(err.message || "Échec."); }
+  };
+
+  const inputStyle = { border: `1px solid ${p.borderStrong}`, background: p.bg2, color: p.text };
+  const inputCls = "px-3 py-2.5 rounded-lg text-sm outline-none";
+
+  return (
+    <div>
+      <AdminHeader title="Codes promo" subtitle="Créez et gérez les codes de réduction utilisables au paiement" />
+      {error && <p className="text-sm mb-4" style={{ color: NEG }}>{error}</p>}
+
+      <div className="rounded-2xl p-5 mb-6 flex flex-wrap items-end gap-3" style={{ background: p.bg2, border: `1px solid ${p.border}` }}>
+        <div>
+          <label className="text-xs mtr-mono uppercase tracking-wide block mb-1.5" style={{ color: p.steel }}>Code</label>
+          <input value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="BIENVENUE10" className={inputCls} style={inputStyle} />
+        </div>
+        <div>
+          <label className="text-xs mtr-mono uppercase tracking-wide block mb-1.5" style={{ color: p.steel }}>Remise (%)</label>
+          <input type="number" value={form.discountPercent} onChange={(e) => setForm((f) => ({ ...f, discountPercent: e.target.value }))} placeholder="10" className={`${inputCls} w-24`} style={inputStyle} />
+        </div>
+        <div>
+          <label className="text-xs mtr-mono uppercase tracking-wide block mb-1.5" style={{ color: p.steel }}>Utilisations max (optionnel)</label>
+          <input type="number" value={form.maxUses} onChange={(e) => setForm((f) => ({ ...f, maxUses: e.target.value }))} placeholder="Illimité" className={`${inputCls} w-36`} style={inputStyle} />
+        </div>
+        <div>
+          <label className="text-xs mtr-mono uppercase tracking-wide block mb-1.5" style={{ color: p.steel }}>Expiration (optionnel)</label>
+          <input type="date" value={form.expiresAt} onChange={(e) => setForm((f) => ({ ...f, expiresAt: e.target.value }))} className={inputCls} style={inputStyle} />
+        </div>
+        <button onClick={create} disabled={creating} className="btn-magnet px-5 py-2.5 rounded-full text-sm font-semibold disabled:opacity-50" style={{ background: p.text, color: p.bg }}>
+          {creating ? "Création…" : "Créer"}
+        </button>
+      </div>
+
+      {promos === null ? (
+        <p className="text-sm" style={{ color: p.steel }}>Chargement…</p>
+      ) : promos.length === 0 ? (
+        <p className="text-sm" style={{ color: p.steel }}>Aucun code promo pour le moment.</p>
+      ) : (
+        <div className="rounded-2xl overflow-hidden" style={{ background: p.bg2, border: `1px solid ${p.border}` }}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left" style={{ background: p.bg3 }}>
+                {["Code", "Remise", "Utilisations", "Expire", "Statut", ""].map((h) => (
+                  <th key={h} className="px-4 py-3 mtr-mono text-[11px] uppercase tracking-wide" style={{ color: p.steel }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {promos.map((pr) => (
+                <tr key={pr.code} className="border-t" style={{ borderColor: p.border }}>
+                  <td className="px-4 py-3 font-bold mtr-mono" style={{ color: p.text }}>{pr.code}</td>
+                  <td className="px-4 py-3" style={{ color: p.text }}>-{pr.discountPercent}%</td>
+                  <td className="px-4 py-3" style={{ color: p.steel }}>{pr.usedCount}{pr.maxUses ? ` / ${pr.maxUses}` : ""}</td>
+                  <td className="px-4 py-3" style={{ color: p.steel }}>{pr.expiresAt ? new Date(pr.expiresAt).toLocaleDateString("fr-FR") : "—"}</td>
+                  <td className="px-4 py-3">
+                    <button onClick={() => toggleActive(pr.code, !pr.active)}>
+                      <Pill style={{ background: alpha(pr.active ? NEON.lime : NEG, 0.14), color: pr.active ? NEON.lime : NEG }}>{pr.active ? "Actif" : "Désactivé"}</Pill>
+                    </button>
+                  </td>
+                  <td className="px-4 py-3"><button onClick={() => remove(pr.code)} className="p-1.5 rounded-lg" style={{ color: NEG }}><Trash2 size={14} /></button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminOrders({ orders, setOrders, products }) {
   const { p } = useTheme();
   const statuses = ["En attente", "Expédiée", "Livrée", "Annulée"];
@@ -3194,6 +3724,10 @@ function Root() {
   const [cart, setCart] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [wishlistOpen, setWishlistOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [quizOpen, setQuizOpen] = useState(false);
+  const [compareIds, setCompareIds] = useState([]);
+  const [compareOpen, setCompareOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [activeProduct, setActiveProduct] = useState(null);
   const [catalogFilter, setCatalogFilter] = useState({ category: "Tous", gender: "Tous" });
@@ -3224,6 +3758,12 @@ function Root() {
     categoryProductsRef.current = map;
   }
   const categoryProducts = categoryProductsRef.current || {};
+
+  // Only ever based on a genuine compareAtPrice set in the admin — never a fabricated "discount".
+  const deepDiscountProducts = useMemo(
+    () => products.filter((pr) => pr.compareAtPrice && pr.compareAtPrice > 0 && (1 - pr.price / pr.compareAtPrice) >= 0.65),
+    [products]
+  );
 
   // Real signals computed from actual data — never invented. Only *paid* orders count toward
   // "best-seller" so it can't be inflated by abandoned/pending carts, and "low stock" only shows
@@ -3340,6 +3880,16 @@ function Root() {
     }
   };
 
+  // No account needed, no DB — comparison is a lightweight, session-only browsing aid, capped
+  // at 3 items so the side-by-side table stays readable.
+  const toggleCompare = (productId) => {
+    setCompareIds((ids) => {
+      if (ids.includes(productId)) return ids.filter((id) => id !== productId);
+      if (ids.length >= 3) return ids;
+      return [...ids, productId];
+    });
+  };
+
   const submitReview = async ({ productId, rating, comment }) => {
     if (!session) { setCheckoutOpen(true); return; }
     const authorName = profile?.fullName?.trim() || session.user.email.split("@")[0];
@@ -3363,9 +3913,11 @@ function Root() {
   // Creates the order (status "pending" payment) then hands off to Stripe Checkout — the browser
   // navigates away entirely, so nothing after the redirect matters; payment confirmation comes
   // back later via the webhook (server-side) and the ?checkout=success redirect (client-side UX).
-  const startCheckout = async (address) => {
+  const startCheckout = async (address, promo) => {
     const lines = cart.map((c) => ({ ...c, product: products.find((pr) => pr.id === c.productId) }));
-    const total = lines.reduce((s, l) => s + (l.product?.price || 0) * l.qty, 0);
+    const subtotal = lines.reduce((s, l) => s + (l.product?.price || 0) * l.qty, 0);
+    const discountPercent = promo?.discountPercent || 0;
+    const total = subtotal * (1 - discountPercent / 100);
     const order = {
       id: newId("o"),
       client: address.fullName,
@@ -3377,13 +3929,31 @@ function Root() {
       shippingAddress: address,
       paymentStatus: "pending",
       total,
+      promoCode: promo?.code || null,
+      discountPercent: promo?.discountPercent || null,
     };
     await dbCreateOrder(order);
     setOrders((os) => [order, ...os]);
-    const stripeItems = lines.map((l) => ({ name: l.product?.name || "Produit", price: l.product?.price || 0, quantity: l.qty, image: l.product?.photos?.[0] }));
+    // Discount is applied by proportionally reducing each line's unit price before it reaches
+    // Stripe (Stripe doesn't accept negative amounts on price_data), so the sum still matches
+    // the discounted total shown to the customer.
+    const stripeItems = lines.map((l) => ({
+      name: l.product?.name || "Produit",
+      price: (l.product?.price || 0) * (1 - discountPercent / 100),
+      quantity: l.qty,
+      image: l.product?.photos?.[0],
+    }));
     const url = await createStripeCheckout({ orderId: order.id, items: stripeItems, customerEmail: session.user.email });
     window.location.href = url;
   };
+
+  // Base page title per section (overridden temporarily while a product modal is open — see
+  // ProductModal's own title effect, which restores this value on close).
+  useEffect(() => {
+    if (mode === "admin") { document.title = "Espace pro — MONTURE"; return; }
+    const titles = { home: "MONTURE — Lunettes de marque au meilleur prix", catalogue: "Catalogue — MONTURE", marques: "Nos marques — MONTURE", apropos: "À propos — MONTURE" };
+    document.title = titles[page] || "MONTURE";
+  }, [page, mode]);
 
   const goAdmin = () => { setMode("admin"); setCartOpen(false); };
   const backToSite = () => setMode("site");
@@ -3443,6 +4013,7 @@ function Root() {
           {adminTab === "brands" && <AdminBrands brands={brands} setBrands={setBrands} products={products} />}
           {adminTab === "suppliers" && <AdminSuppliers suppliers={suppliers} setSuppliers={setSuppliers} brands={brands} />}
           {adminTab === "orders" && <AdminOrders orders={orders} setOrders={setOrders} products={products} />}
+          {adminTab === "promos" && <AdminPromoCodes />}
         </AdminShell>
       </div>
     );
@@ -3451,7 +4022,7 @@ function Root() {
   return (
     <div className="mtr grain" style={{ background: p.bg, minHeight: "100vh" }}>
       <AnnounceBar />
-      <SiteHeader page={page} setPage={goPage} onGoCategory={goCategory} cartCount={cartCount} onOpenCart={() => setCartOpen(true)} onGoAdmin={goAdmin} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} session={session} loyaltyPoints={profile?.loyaltyPoints || 0} wishlistCount={wishlistIds.length} onOpenWishlist={() => setWishlistOpen(true)} />
+      <SiteHeader page={page} setPage={goPage} onGoCategory={goCategory} cartCount={cartCount} onOpenCart={() => setCartOpen(true)} onGoAdmin={goAdmin} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} session={session} loyaltyPoints={profile?.loyaltyPoints || 0} wishlistCount={wishlistIds.length} onOpenWishlist={() => setWishlistOpen(true)} onOpenAccount={() => setAccountOpen(true)} />
 
       {checkoutNotice && (
         <div className="relative z-30" style={{ background: checkoutNotice.type === "success" ? alpha(NEON.lime, 0.14) : alpha(NEON.yellow, 0.14) }}>
@@ -3471,9 +4042,23 @@ function Root() {
       {page === "home" && (
         <>
           <Hero setPage={goPage} featured={featuredProduct} brands={brands} onOpenProduct={setActiveProduct} />
-          <ScrollGlassesStory featured={featuredProduct} />
           <CategoryStrip onGoCategory={goCategory} categoryProducts={categoryProducts} />
+          <QuizBanner onOpen={() => setQuizOpen(true)} />
+          <ScrollGlassesStory featured={featuredProduct} />
           <LensRevealBrands brands={brands} setPage={goPage} />
+          {deepDiscountProducts.length > 0 && (
+            <ProductRail
+              title="Réductions de plus de 65%"
+              eyebrow="Prix cassés — pour de vrai"
+              eyebrowColor={NEON.orange}
+              products={deepDiscountProducts}
+              brands={brands}
+              onOpen={setActiveProduct}
+              productInsights={productInsights}
+              wishlistIds={wishlistIds}
+              onToggleWishlist={toggleWishlist}
+            />
+          )}
           <ProductRail
             title="Verres holographiques à la une"
             eyebrow="Sélection de la semaine"
@@ -3533,9 +4118,15 @@ function Root() {
         session={session}
         onSubmitReview={submitReview}
         onView={trackRecentlyViewed}
+        isCompared={activeProduct ? compareIds.includes(activeProduct.id) : false}
+        onToggleCompare={toggleCompare}
       />
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} cart={cart} products={products} brands={brands} updateQty={updateQty} removeItem={removeItem} onCheckout={() => { setCartOpen(false); setCheckoutOpen(true); }} />
       <WishlistDrawer open={wishlistOpen} onClose={() => setWishlistOpen(false)} wishlistIds={wishlistIds} products={products} brands={brands} onRemove={toggleWishlist} onAddToCart={addToCart} onOpenProduct={setActiveProduct} />
+      <AccountDrawer open={accountOpen} onClose={() => setAccountOpen(false)} session={session} profile={profile} orders={orders} onSignIn={signIn} onSignUp={signUp} onSignOut={async () => { await signOut(); setAccountOpen(false); }} />
+      <QuizWidget open={quizOpen} onClose={() => setQuizOpen(false)} products={products} brands={brands} onOpenProduct={setActiveProduct} onGoCategory={goCategory} />
+      <CompareBar compareIds={compareIds} products={products} onOpen={() => setCompareOpen(true)} onClear={() => setCompareIds([])} />
+      <CompareModal open={compareOpen} onClose={() => setCompareOpen(false)} compareIds={compareIds} products={products} brands={brands} productInsights={productInsights} onRemove={toggleCompare} />
       <CheckoutWizard
         open={checkoutOpen}
         onClose={() => setCheckoutOpen(false)}
@@ -3546,67 +4137,6 @@ function Root() {
         onProfileSaved={saveShippingAddress}
         onStartCheckout={startCheckout}
       />
-    </div>
-  );
-}
-
-// Custom lens-shaped cursor, desktop only (never intercepts touch input). Smoothly trails the
-// real pointer and grows slightly over anything clickable, for a bit of tactile feedback.
-function CustomCursor() {
-  const ref = useRef(null);
-  const [enabled, setEnabled] = useState(false);
-
-  useEffect(() => {
-    setEnabled(typeof window !== "undefined" && window.matchMedia && window.matchMedia("(pointer: fine)").matches);
-  }, []);
-
-  useEffect(() => {
-    if (!enabled) return;
-    document.body.classList.add("mtr-custom-cursor");
-    const pos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-    const target = { x: pos.x, y: pos.y };
-    const onMove = (e) => { target.x = e.clientX; target.y = e.clientY; };
-    const onOver = (e) => {
-      const el = ref.current;
-      if (!el) return;
-      const clickable = e.target.closest?.("button, a, [role='button'], input, select, textarea");
-      el.style.transform += ""; // no-op to keep transform chain stable
-      el.classList.toggle("hovering", !!clickable);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseover", onOver);
-    let raf;
-    const loop = () => {
-      pos.x += (target.x - pos.x) * 0.22;
-      pos.y += (target.y - pos.y) * 0.22;
-      const el = ref.current;
-      if (el) {
-        const scale = el.classList.contains("hovering") ? 1.6 : 1;
-        el.style.transform = `translate(${pos.x}px, ${pos.y}px) translate(-50%, -50%) scale(${scale})`;
-      }
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => {
-      document.body.classList.remove("mtr-custom-cursor");
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseover", onOver);
-      cancelAnimationFrame(raf);
-    };
-  }, [enabled]);
-
-  if (!enabled) return null;
-  return (
-    <div ref={ref} className="mtr-cursor" aria-hidden="true">
-      <svg width="34" height="34" viewBox="0 0 34 34">
-        <defs>
-          <linearGradient id="mtrCursorGrad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor={NEON.cyan} />
-            <stop offset="100%" stopColor={NEON.pink} />
-          </linearGradient>
-        </defs>
-        <ellipse cx="17" cy="17" rx="14" ry="12" fill="url(#mtrCursorGrad)" fillOpacity="0.3" stroke="url(#mtrCursorGrad)" strokeWidth="1.5" />
-      </svg>
     </div>
   );
 }
@@ -3671,7 +4201,6 @@ export default function App() {
   return (
     <ThemeProvider>
       <GlobalStyle />
-      <CustomCursor />
       {showIntro && <IntroScreen onDone={dismissIntro} />}
       <Root />
     </ThemeProvider>
