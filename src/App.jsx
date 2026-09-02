@@ -673,6 +673,27 @@ function SpecRow({ label, value }) {
   );
 }
 
+// go2glass wordmark, built from real typography (not a flattened image) so it stays crisp at any
+// size and follows the brand rules exactly: "go" outlined, "2" as a solid fluo badge, "glass"
+// solid. Below 20px the outline closes into solid fill (per spec — a thin stroke doesn't read at
+// small sizes), and the outline colour flips between the light/dark variants automatically.
+function Logo({ size = 22, className = "", forceDark }) {
+  const { dark: themeDark } = useTheme();
+  const dark = forceDark !== undefined ? forceDark : themeDark;
+  const strokeColor = dark ? "#DFFF1E" : "#B8D900";
+  const glassColor = "#DFFF1E";
+  const inkColor = dark ? "#F4F1EA" : "#14161A";
+  const small = size < 20;
+  const fontStyle = { fontFamily: "'Archivo', sans-serif", fontWeight: 800, letterSpacing: "-0.035em", fontSize: size, lineHeight: 1 };
+  return (
+    <span className={`inline-flex items-center ${className}`} style={fontStyle}>
+      <span style={small ? { color: inkColor } : { color: "transparent", WebkitTextStroke: `${Math.max(size * 0.035, 0.6)}px ${strokeColor}`, textStroke: `${Math.max(size * 0.035, 0.6)}px ${strokeColor}` }}>go</span>
+      <span className="inline-flex items-center justify-center" style={{ background: glassColor, color: "#14161A", borderRadius: "0.22em", width: "1em", height: "1em", fontSize: "0.92em", margin: "0 0.06em" }}>2</span>
+      <span style={{ color: inkColor }}>glass</span>
+    </span>
+  );
+}
+
 function Pill({ children, style, className = "" }) {
   return <span className={`mtr-mono text-[10px] uppercase tracking-wide px-2 py-1 rounded-full ${className}`} style={style}>{children}</span>;
 }
@@ -801,8 +822,8 @@ function SiteHeader({ page, setPage, onGoCategory, cartCount, onOpenCart, onGoAd
   return (
     <header className="sticky top-0 z-40 transition-all duration-300" style={{ background: scrolled ? alpha(p.bg, 0.75) : "transparent", backdropFilter: scrolled ? "blur(14px)" : "none", WebkitBackdropFilter: scrolled ? "blur(14px)" : "none", borderBottom: scrolled ? `1px solid ${p.border}` : "1px solid transparent" }}>
       <div className="max-w-6xl mx-auto px-5 md:px-8 h-16 flex items-center justify-between">
-        <button onClick={() => { setPage("home"); window.scrollTo({ top: 0 }); }} className="mtr-display text-xl font-extrabold tracking-tight shrink-0" style={{ color: p.text }}>
-          MONTURE<span style={{ color: PRIMARY }}>.</span>
+        <button onClick={() => { setPage("home"); window.scrollTo({ top: 0 }); }} className="shrink-0">
+          <Logo size={24} />
         </button>
         <nav className="hidden lg:flex items-center gap-5 xl:gap-6">
           <NavLink target="home">Accueil</NavLink>
@@ -1295,7 +1316,7 @@ function Footer({ setPage, onGoAdmin }) {
     <footer style={{ background: p.bg }} className="pt-14 pb-8 border-t" >
       <div className="max-w-6xl mx-auto px-5 md:px-8 pt-10 grid md:grid-cols-4 gap-10">
         <div>
-          <div className="mtr-display text-xl font-extrabold" style={{ color: p.text }}>MONTURE<span style={{ color: PRIMARY }}>.</span></div>
+          <Logo size={22} />
           <p className="mt-3 text-sm max-w-xs" style={{ color: alpha(p.text, 0.45) }}>Lunettes de marque, sourcées auprès de grossistes agréés. Basé en France.</p>
         </div>
         <div>
@@ -1319,7 +1340,7 @@ function Footer({ setPage, onGoAdmin }) {
           <div className="mt-4"><ThemeToggle /></div>
         </div>
       </div>
-      <div className="max-w-6xl mx-auto px-5 md:px-8 mt-10 text-xs" style={{ color: alpha(p.text, 0.28) }}>Prototype de démonstration — © 2026 MONTURE. Données et visuels fictifs.</div>
+      <div className="max-w-6xl mx-auto px-5 md:px-8 mt-10 text-xs" style={{ color: alpha(p.text, 0.28) }}>Prototype de démonstration — © 2026 go2glass. Données et visuels fictifs.</div>
     </footer>
   );
 }
@@ -1496,7 +1517,7 @@ function AboutPage({ setPage }) {
         <Eyebrow color={NEON.lime}>À propos</Eyebrow>
         <h1 className="mtr-display text-3xl md:text-4xl font-bold mb-6" style={{ color: p.text }}>Une monture, jamais une contrefaçon</h1>
         <p className="text-base leading-relaxed mb-4" style={{ color: alpha(p.text, 0.65) }}>
-          MONTURE référence uniquement des marques établies, sourcées auprès de grossistes et distributeurs agréés
+          go2glass référence uniquement des marques établies, sourcées auprès de grossistes et distributeurs agréés
           en France, en Italie et en Belgique. Nous ne stockons pas nous-mêmes le produit : chaque commande est
           transmise au fournisseur concerné, qui expédie directement au client.
         </p>
@@ -1611,7 +1632,7 @@ function ProductModal({ product, brand, onClose, onAddToCart, insights, isWishli
   useEffect(() => {
     if (!product) return;
     const prevTitle = document.title;
-    document.title = `${product.name} — ${euro(product.price)} | MONTURE`;
+    document.title = `${product.name} — ${euro(product.price)} | go2glass`;
     let meta = document.querySelector('meta[name="description"]');
     const prevDesc = meta?.getAttribute("content") || "";
     if (!meta) { meta = document.createElement("meta"); meta.setAttribute("name", "description"); document.head.appendChild(meta); }
@@ -2376,7 +2397,7 @@ function AdminLogin({ onLogin, onBackToSite, deniedNotice }) {
       <div className="relative w-full max-w-sm">
         <button onClick={onBackToSite} className="flex items-center gap-2 text-sm mb-8" style={{ color: alpha(p.text, 0.5) }}><ArrowLeft size={14} /> Retour au site</button>
         {deniedNotice && <p className="text-sm mb-4 p-3 rounded-xl" style={{ background: alpha(NEG, 0.14), color: NEG }}>{deniedNotice}</p>}
-        <div className="mtr-display text-2xl font-extrabold mb-1" style={{ color: p.text }}>MONTURE<span style={{ color: PRIMARY }}>.</span> Pro</div>
+        <div className="flex items-center gap-2 mb-1"><Logo size={26} /><span className="mtr-display text-lg font-bold" style={{ color: p.text }}>Pro</span></div>
         <p className="text-sm mb-8" style={{ color: alpha(p.text, 0.45) }}>Espace d'administration du catalogue et des commandes.</p>
         <div className="space-y-3">
           <input placeholder="Adresse e-mail" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} className="mtr-input w-full px-4 py-3 rounded-xl text-sm outline-none" style={inputStyle} />
@@ -2408,7 +2429,7 @@ function AdminShell({ tab, setTab, onLogout, onBackToSite, children }) {
   return (
     <div className="min-h-screen flex flex-col md:flex-row" style={{ background: p.bg }}>
       <aside className="hidden md:flex md:flex-col w-64 shrink-0 p-6" style={{ background: p.sidebar }}>
-        <div className="mtr-display text-lg font-extrabold mb-8" style={{ color: "#F3F5F6" }}>MONTURE<span style={{ color: PRIMARY }}>.</span> Pro</div>
+        <div className="flex items-center gap-2 mb-8"><Logo size={20} forceDark /><span className="mtr-display text-base font-bold" style={{ color: "#F3F5F6" }}>Pro</span></div>
         <nav className="flex-1 space-y-1">
           {items.map((it) => {
             const Icon = it.icon;
@@ -3950,9 +3971,9 @@ function Root() {
   // Base page title per section (overridden temporarily while a product modal is open — see
   // ProductModal's own title effect, which restores this value on close).
   useEffect(() => {
-    if (mode === "admin") { document.title = "Espace pro — MONTURE"; return; }
-    const titles = { home: "MONTURE — Lunettes de marque au meilleur prix", catalogue: "Catalogue — MONTURE", marques: "Nos marques — MONTURE", apropos: "À propos — MONTURE" };
-    document.title = titles[page] || "MONTURE";
+    if (mode === "admin") { document.title = "Espace pro — go2glass"; return; }
+    const titles = { home: "go2glass — Lunettes de marque au meilleur prix", catalogue: "Catalogue — go2glass", marques: "Nos marques — go2glass", apropos: "À propos — go2glass" };
+    document.title = titles[page] || "go2glass";
   }, [page, mode]);
 
   const goAdmin = () => { setMode("admin"); setCartOpen(false); };
@@ -4183,8 +4204,8 @@ function IntroScreen({ onDone }) {
         <div className="mesh-blob" style={{ width: 420, height: 420, top: "20%", left: "20%", background: NEON.cyan, opacity: 0.25 }} />
         <div className="mesh-blob" style={{ width: 380, height: 380, bottom: "15%", right: "20%", background: NEON.pink, opacity: 0.22, animationDelay: "-8s" }} />
       </div>
-      <div className="relative mtr-display font-extrabold announce-text" style={{ fontSize: "clamp(2.5rem, 8vw, 5rem)", animation: "mtrPop .6s cubic-bezier(.2,.8,.2,1) both" }}>
-        MONTURE.
+      <div className="relative" style={{ animation: "mtrPop .6s cubic-bezier(.2,.8,.2,1) both" }}>
+        <Logo size={56} />
       </div>
     </div>
   );
