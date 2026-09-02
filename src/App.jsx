@@ -821,11 +821,11 @@ function SiteHeader({ page, setPage, onGoCategory, cartCount, onOpenCart, onGoAd
 
   return (
     <header className="sticky top-0 z-40 transition-all duration-300" style={{ background: scrolled ? alpha(p.bg, 0.75) : "transparent", backdropFilter: scrolled ? "blur(14px)" : "none", WebkitBackdropFilter: scrolled ? "blur(14px)" : "none", borderBottom: scrolled ? `1px solid ${p.border}` : "1px solid transparent" }}>
-      <div className="max-w-6xl mx-auto px-5 md:px-8 h-16 flex items-center justify-between">
+      <div className="max-w-6xl mx-auto px-5 md:px-8 h-16 flex items-center justify-between gap-6">
         <button onClick={() => { setPage("home"); window.scrollTo({ top: 0 }); }} className="shrink-0">
           <Logo size={24} />
         </button>
-        <nav className="hidden lg:flex items-center gap-5 xl:gap-6">
+        <nav className="hidden lg:flex items-center gap-3.5 xl:gap-5">
           <NavLink target="home">Accueil</NavLink>
           {categories.map((c) => <CategoryLink key={c.label} category={c.category} gender={c.gender}>{c.label}</CategoryLink>)}
           <NavLink target="marques">Marques</NavLink>
