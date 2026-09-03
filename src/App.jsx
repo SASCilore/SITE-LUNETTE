@@ -2161,10 +2161,18 @@ function CheckoutWizard({ open, onClose, cart, products, session, profile, onPro
   const [promoError, setPromoError] = useState("");
   const [promoChecking, setPromoChecking] = useState(false);
 
+  // Only re-initialize step/errors when the wizard actually transitions from closed to open —
+  // NOT every time `profile` changes while it's already open. Saving the address updates the
+  // profile in Root, which would otherwise re-trigger this effect and snap the wizard straight
+  // back to the address step right after advancing to payment.
+  const wasOpenRef = useRef(false);
   useEffect(() => {
-    if (!open) return;
+    const justOpened = open && !wasOpenRef.current;
+    wasOpenRef.current = open;
+    if (!open || !justOpened) return;
     setStep(session ? "address" : "account");
     setAuthError(""); setAddressError(""); setPayError(""); setSignupNotice("");
+    setPromo(null); setPromoInput(""); setPromoError("");
     if (profile) {
       setAddress({
         fullName: profile.fullName || "", phone: profile.phone || "",
