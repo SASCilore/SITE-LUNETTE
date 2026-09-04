@@ -1809,7 +1809,7 @@ function AccountDrawer({ open, onClose, session, profile, orders, onSignIn, onSi
                     return (
                       <div key={o.id} className="p-3 rounded-xl" style={{ background: p.bg3 }}>
                         <div className="flex items-center justify-between text-sm">
-                          <span className="font-semibold" style={{ color: p.text }}>#{o.id.slice(-6).toUpperCase()}</span>
+                          <span className="font-semibold" style={{ color: p.text }}>#{o.orderNumber ? String(o.orderNumber).padStart(5, "0") : o.id.slice(-6).toUpperCase()}</span>
                           <span style={{ color: p.steel }}>{o.date}</span>
                         </div>
                         <div className="flex items-center justify-between mt-1 text-xs">
@@ -3694,7 +3694,7 @@ function AdminOrders({ orders, setOrders, products }) {
             <tbody>
               {orders.map((o) => (
                 <tr key={o.id} className="border-t" style={{ borderColor: p.border }}>
-                  <td className="px-4 py-3 mtr-mono text-xs" style={{ color: p.steel }}>#{o.id.slice(-5).toUpperCase()}</td>
+                  <td className="px-4 py-3 mtr-mono text-xs" style={{ color: p.steel }}>#{o.orderNumber ? String(o.orderNumber).padStart(5, "0") : o.id.slice(-5).toUpperCase()}</td>
                   <td className="px-4 py-3">
                     <div className="font-medium" style={{ color: p.text }}>{o.client}</div>
                     <div className="text-xs" style={{ color: p.steel }}>{o.email}</div>
@@ -3961,8 +3961,8 @@ function Root() {
       promoCode: promo?.code || null,
       discountPercent: promo?.discountPercent || null,
     };
-    await dbCreateOrder(order);
-    setOrders((os) => [order, ...os]);
+    const created = await dbCreateOrder(order);
+    setOrders((os) => [created, ...os]);
     // Discount is applied by proportionally reducing each line's unit price before it reaches
     // Stripe (Stripe doesn't accept negative amounts on price_data), so the sum still matches
     // the discounted total shown to the customer.
