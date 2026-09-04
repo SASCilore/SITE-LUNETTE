@@ -78,6 +78,7 @@ const rowToOrder = (r) => ({
   paymentStatus: r.payment_status || "pending", stripeSessionId: r.stripe_session_id || null,
   total: r.total !== null && r.total !== undefined ? Number(r.total) : null,
   promoCode: r.promo_code || null, discountPercent: r.discount_percent !== null && r.discount_percent !== undefined ? Number(r.discount_percent) : null,
+  orderNumber: r.order_number || null,
 });
 const orderToRow = (o) => ({
   id: o.id, client: o.client, email: o.email, order_date: o.date, items: o.items, status: o.status,
@@ -178,13 +179,12 @@ export async function dbDeleteProduct(id) {
 /* ---------------------------------- ORDERS ---------------------------------- */
 
 export async function dbCreateOrder(order) {
-  // No .select() here on purpose: orders can be inserted by anonymous visitors (checkout),
-  // but the read policy is admin-only — chaining .select() after insert would try to read the
-  // row back under the same anon session and fail against RLS. The order object is already
-  // fully formed client-side (id included), so we just return it as-is on success.
-  const { error } = await supabase.from("orders").insert(orderToRow(order));
+  // Checkout now always requires a signed-in account, so the order's user_id always matches the
+  // inserting customer — the "own or admin" read policy lets us select the row straight back,
+  // which is how we get the real, DB-generated sequential order_number (bigserial) to display.
+  const { data, error } = await supabase.from("orders").insert(orderToRow(order)).select().single();
   if (error) throw error;
-  return order;
+  return rowToOrder(data);
 }
 export async function dbUpdateOrderStatus(id, status) {
   const { data, error } = await supabase.from("orders").update({ status }).eq("id", id).select().single();
