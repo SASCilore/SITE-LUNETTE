@@ -223,6 +223,27 @@ function GlobalStyle() {
 
       .btn-magnet { transition: transform .25s cubic-bezier(.2,.8,.2,1), box-shadow .25s ease; }
 
+      /* Guarantees a real ≥44px tap target on touch devices for small icon-only buttons, without
+         changing their visual (desktop-hover) size — the extra hit area is invisible padding. */
+      .tap-target { position: relative; }
+      .tap-target::before {
+        content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        width: max(100%, 44px); height: max(100%, 44px);
+      }
+
+      /* Click ripple — deliberately does NOT set overflow:hidden on the target, which would clip
+         the neon glow box-shadows used throughout the site. The ripple simply fades within the
+         button's bounds instead of being strictly masked; a tiny cosmetic overflow is a much
+         smaller trade-off than losing every button's glow. */
+      .mtr-ripple { position: absolute; border-radius: 50%; background: rgba(255,255,255,0.45); pointer-events: none; transform: scale(0); animation: mtrRippleAnim .55s ease-out; mix-blend-mode: overlay; }
+      @keyframes mtrRippleAnim { to { transform: scale(1); opacity: 0; } }
+
+      /* Page transition — plays once whenever the top-level page container remounts (React key
+         change on navigation), giving each section switch a small sense of arrival rather than
+         an abrupt cut. */
+      .mtr-page-enter { animation: mtrPageEnter .5s cubic-bezier(.2,.8,.2,1) both; }
+      @keyframes mtrPageEnter { from { opacity: 0; transform: translateY(14px) scale(.99); } to { opacity: 1; transform: none; } }
+
       /* Add-to-cart confetti burst */
       .confetti-piece { position: fixed; top: 0; left: 0; width: 8px; height: 8px; pointer-events: none; z-index: 9998; border-radius: 2px; }
       @keyframes confettiBurst {
@@ -883,6 +904,26 @@ function Hero({ setPage, featured, brands, onOpenProduct }) {
   const boost = dark ? 1 : 1.7;
   const tilt = useTilt(7);
   const featuredBrand = featured ? brands.find((b) => b.id === featured.brandId) : null;
+  const h1Ref = useRef(null);
+
+  // Kinetic title: as the hero scrolls out of view, the headline gently rises, shrinks and
+  // tightens its letter-spacing — a subtle sense of the page having real depth rather than a
+  // static poster. Uses direct style mutation (not React state) so it stays perfectly smooth at
+  // 60fps without triggering re-renders on every scroll tick.
+  useEffect(() => {
+    const onScroll = () => {
+      const el = sectionRef.current, h1 = h1Ref.current;
+      if (!el || !h1) return;
+      const rect = el.getBoundingClientRect();
+      const progress = Math.min(1, Math.max(0, -rect.top / (rect.height * 0.85)));
+      h1.style.transform = `translateY(${progress * -34}px) scale(${1 - progress * 0.07})`;
+      h1.style.opacity = String(1 - progress * 0.55);
+      h1.style.letterSpacing = `${progress * 0.015}em`;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   const onMove = (e) => {
     const el = sectionRef.current;
@@ -906,7 +947,7 @@ function Hero({ setPage, featured, brands, onOpenProduct }) {
       <div className="relative max-w-6xl mx-auto px-5 md:px-8 pt-20 pb-24 md:pt-28 md:pb-32 grid md:grid-cols-2 gap-14 items-center">
         <div className="reveal visible">
           <Eyebrow>Sélection multi-marques — pièces authentiques</Eyebrow>
-          <h1 className="mtr-display font-extrabold leading-[0.94]" style={{ color: p.text, fontSize: "clamp(2.75rem, 7vw, 4.75rem)" }}>
+          <h1 ref={h1Ref} className="mtr-display font-extrabold leading-[0.94]" style={{ color: p.text, fontSize: "clamp(2.75rem, 7vw, 4.75rem)", willChange: "transform, opacity" }}>
             Des montures<br />signées.<br /><span className="chroma">Point.</span>
           </h1>
           <p className="mt-6 text-base md:text-lg max-w-md" style={{ color: alpha(p.text, 0.6) }}>
@@ -1668,7 +1709,7 @@ function ProductModal({ product, brand, onClose, onAddToCart, insights, isWishli
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full md:max-w-3xl max-h-[92vh] overflow-y-auto rounded-t-3xl md:rounded-3xl" style={{ background: p.bg2, border: `1px solid ${p.border}`, animation: "mtrPop .35s cubic-bezier(.2,.8,.2,1)" }}>
+      <div className="relative w-full md:max-w-3xl max-h-[92vh] overflow-y-auto rounded-t-3xl md:rounded-3xl" style={{ background: alpha(p.bg2, 0.75), backdropFilter: "blur(22px)", WebkitBackdropFilter: "blur(22px)", border: `1px solid ${p.border}`, animation: "mtrPop .35s cubic-bezier(.2,.8,.2,1)" }}>
         <style>{`@keyframes mtrPop { from { opacity:0; transform: translateY(24px) scale(.98);} to {opacity:1; transform:none;} }`}</style>
         <button onClick={onClose} className="absolute top-4 right-4 z-10 p-2 rounded-full btn-magnet" style={{ background: p.bg3 }}><X size={18} style={{ color: p.text }} /></button>
         {onToggleWishlist && (
@@ -1708,9 +1749,9 @@ function ProductModal({ product, brand, onClose, onAddToCart, insights, isWishli
             </div>
             <div className="mt-6 flex items-center gap-4">
               <div className="flex items-center rounded-full overflow-hidden" style={{ border: `1px solid ${p.borderStrong}` }}>
-                <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="p-2.5" style={{ color: p.text }}><Minus size={14} /></button>
+                <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="tap-target p-2.5" style={{ color: p.text }}><Minus size={14} /></button>
                 <span className="px-3 text-sm font-semibold" style={{ color: p.text }}>{qty}</span>
-                <button onClick={() => setQty((q) => q + 1)} className="p-2.5" style={{ color: p.text }}><Plus size={14} /></button>
+                <button onClick={() => setQty((q) => q + 1)} className="tap-target p-2.5" style={{ color: p.text }}><Plus size={14} /></button>
               </div>
               <NeonButton
                 disabled={product.stock === "Rupture"}
@@ -1768,7 +1809,7 @@ function AccountDrawer({ open, onClose, session, profile, orders, onSignIn, onSi
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/45 backdrop-blur-sm" onClick={onClose} />
-      <div className="absolute right-0 top-0 bottom-0 w-full max-w-md flex flex-col" style={{ background: p.bg2, borderLeft: `1px solid ${p.border}`, animation: "mtrSlideIn .4s cubic-bezier(.2,.8,.2,1)" }}>
+      <div className="absolute right-0 top-0 bottom-0 w-full max-w-md flex flex-col" style={{ background: alpha(p.bg2, 0.8), backdropFilter: "blur(22px)", WebkitBackdropFilter: "blur(22px)", borderLeft: `1px solid ${p.border}`, animation: "mtrSlideIn .4s cubic-bezier(.2,.8,.2,1)" }}>
         <div className="flex items-center justify-between px-6 py-5 border-b" style={{ borderColor: p.border }}>
           <span className="font-bold flex items-center gap-2" style={{ color: p.text }}><User size={16} /> Mon compte</span>
           <button onClick={onClose}><X size={20} style={{ color: p.text }} /></button>
@@ -1843,7 +1884,7 @@ function WishlistDrawer({ open, onClose, wishlistIds, products, brands, onRemove
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/45 backdrop-blur-sm" onClick={onClose} />
-      <div className="absolute right-0 top-0 bottom-0 w-full max-w-md flex flex-col" style={{ background: p.bg2, borderLeft: `1px solid ${p.border}`, animation: "mtrSlideIn .4s cubic-bezier(.2,.8,.2,1)" }}>
+      <div className="absolute right-0 top-0 bottom-0 w-full max-w-md flex flex-col" style={{ background: alpha(p.bg2, 0.8), backdropFilter: "blur(22px)", WebkitBackdropFilter: "blur(22px)", borderLeft: `1px solid ${p.border}`, animation: "mtrSlideIn .4s cubic-bezier(.2,.8,.2,1)" }}>
         <style>{`@keyframes mtrSlideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
         <div className="flex items-center justify-between px-6 py-5 border-b" style={{ borderColor: p.border }}>
           <span className="font-bold flex items-center gap-2" style={{ color: p.text }}><Heart size={16} style={{ color: NEON.pink }} /> Liste d'envies</span>
@@ -1868,7 +1909,7 @@ function WishlistDrawer({ open, onClose, wishlistIds, products, brands, onRemove
                       <button onClick={() => onAddToCart(product, 1)} disabled={product.stock === "Rupture"} className="text-xs font-semibold px-3 py-1.5 rounded-full disabled:opacity-40" style={{ background: p.text, color: p.bg }}>Ajouter</button>
                     </div>
                   </div>
-                  <button onClick={() => onRemove(product.id)} className="self-start p-1" style={{ color: p.steel }}><Trash2 size={14} /></button>
+                  <button onClick={() => onRemove(product.id)} className="tap-target self-start p-1" style={{ color: p.steel }}><Trash2 size={14} /></button>
                 </div>
               );
             })
@@ -1888,7 +1929,7 @@ function CartDrawer({ open, onClose, cart, products, brands, updateQty, removeIt
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/55 backdrop-blur-sm" onClick={onClose} />
-      <div className="absolute right-0 top-0 bottom-0 w-full max-w-md flex flex-col" style={{ background: p.bg2, borderLeft: `1px solid ${p.border}`, animation: "mtrSlideIn .4s cubic-bezier(.2,.8,.2,1)" }}>
+      <div className="absolute right-0 top-0 bottom-0 w-full max-w-md flex flex-col" style={{ background: alpha(p.bg2, 0.8), backdropFilter: "blur(22px)", WebkitBackdropFilter: "blur(22px)", borderLeft: `1px solid ${p.border}`, animation: "mtrSlideIn .4s cubic-bezier(.2,.8,.2,1)" }}>
         <style>{`@keyframes mtrSlideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
         <div className="flex items-center justify-between px-6 py-5 border-b" style={{ borderColor: p.border }}>
           <span className="font-bold" style={{ color: p.text }}>Votre panier</span>
@@ -1911,14 +1952,14 @@ function CartDrawer({ open, onClose, cart, products, brands, updateQty, removeIt
                     <div className="text-sm font-semibold" style={{ color: p.text }}>{l.product?.name}</div>
                     <div className="flex items-center justify-between mt-2">
                       <div className="flex items-center rounded-full overflow-hidden" style={{ border: `1px solid ${p.borderStrong}` }}>
-                        <button onClick={() => updateQty(l.productId, Math.max(1, l.qty - 1))} className="p-1.5" style={{ color: p.text }}><Minus size={12} /></button>
+                        <button onClick={() => updateQty(l.productId, Math.max(1, l.qty - 1))} className="tap-target p-1.5" style={{ color: p.text }}><Minus size={12} /></button>
                         <span className="px-2 text-xs font-semibold" style={{ color: p.text }}>{l.qty}</span>
-                        <button onClick={() => updateQty(l.productId, l.qty + 1)} className="p-1.5" style={{ color: p.text }}><Plus size={12} /></button>
+                        <button onClick={() => updateQty(l.productId, l.qty + 1)} className="tap-target p-1.5" style={{ color: p.text }}><Plus size={12} /></button>
                       </div>
                       <span className="text-sm font-bold" style={{ color: p.text }}>{euro((l.product?.price || 0) * l.qty)}</span>
                     </div>
                   </div>
-                  <button onClick={() => removeItem(l.productId)} className="self-start p-1" style={{ color: p.steel }}><Trash2 size={14} /></button>
+                  <button onClick={() => removeItem(l.productId)} className="tap-target self-start p-1" style={{ color: p.steel }}><Trash2 size={14} /></button>
                 </div>
               );
             })
@@ -1954,7 +1995,7 @@ function CompareBar({ compareIds, products, onOpen, onClear }) {
       </div>
       <span className="text-sm font-medium" style={{ color: p.text }}>{items.length} produit{items.length > 1 ? "s" : ""}</span>
       <NeonButton onClick={onOpen} disabled={items.length < 2} className="px-4 py-2 rounded-full text-xs">Comparer</NeonButton>
-      <button onClick={onClear} className="p-1.5" style={{ color: p.steel }} aria-label="Vider le comparateur"><X size={16} /></button>
+      <button onClick={onClear} className="tap-target p-1.5" style={{ color: p.steel }} aria-label="Vider le comparateur"><X size={16} /></button>
     </div>
   );
 }
@@ -1977,7 +2018,7 @@ function CompareModal({ open, onClose, compareIds, products, brands, productInsi
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl p-6 md:p-8" style={{ background: p.bg2, border: `1px solid ${p.border}`, animation: "mtrPop .35s cubic-bezier(.2,.8,.2,1)" }}>
+      <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl p-6 md:p-8" style={{ background: alpha(p.bg2, 0.75), backdropFilter: "blur(22px)", WebkitBackdropFilter: "blur(22px)", border: `1px solid ${p.border}`, animation: "mtrPop .35s cubic-bezier(.2,.8,.2,1)" }}>
         <div className="flex items-center justify-between mb-6">
           <h3 className="mtr-display text-xl font-bold flex items-center gap-2" style={{ color: p.text }}><Scale size={18} /> Comparateur</h3>
           <button onClick={onClose}><X size={20} style={{ color: p.text }} /></button>
@@ -1990,7 +2031,7 @@ function CompareModal({ open, onClose, compareIds, products, brands, productInsi
                 {items.map((pr) => (
                   <th key={pr.id} className="text-left p-3 align-top" style={{ minWidth: 180 }}>
                     <div className="relative rounded-xl p-3" style={{ background: p.bg3 }}>
-                      <button onClick={() => onRemove(pr.id)} className="absolute top-1.5 right-1.5 p-1 rounded-full" style={{ background: alpha(p.text, 0.08) }}><X size={12} style={{ color: p.steel }} /></button>
+                      <button onClick={() => onRemove(pr.id)} className="tap-target absolute top-1.5 right-1.5 p-1 rounded-full" style={{ background: alpha(p.text, 0.08) }}><X size={12} style={{ color: p.steel }} /></button>
                       <div className="h-16"><ProductVisual product={pr} stroke={alpha(p.text, 0.5)} /></div>
                       <div className="mt-2 text-xs font-bold" style={{ color: p.text }}>{pr.name}</div>
                     </div>
@@ -2063,7 +2104,7 @@ function QuizWidget({ open, onClose, products, brands, onOpenProduct, onGoCatego
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={close} />
-      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl p-8" style={{ background: p.bg2, border: `1px solid ${p.border}`, animation: "mtrPop .35s cubic-bezier(.2,.8,.2,1)" }}>
+      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl p-8" style={{ background: alpha(p.bg2, 0.75), backdropFilter: "blur(22px)", WebkitBackdropFilter: "blur(22px)", border: `1px solid ${p.border}`, animation: "mtrPop .35s cubic-bezier(.2,.8,.2,1)" }}>
         <button onClick={close} className="absolute top-4 right-4 p-2 rounded-full btn-magnet" style={{ background: p.bg3 }}><X size={18} style={{ color: p.text }} /></button>
 
         <div className="h-1.5 rounded-full overflow-hidden mb-6" style={{ background: p.bg3 }}>
@@ -2259,7 +2300,7 @@ function CheckoutWizard({ open, onClose, cart, products, session, profile, onPro
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-3xl p-8" style={{ background: p.bg2, border: `1px solid ${p.border}`, animation: "mtrPop .35s cubic-bezier(.2,.8,.2,1)" }}>
+      <div className="relative w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-3xl p-8" style={{ background: alpha(p.bg2, 0.75), backdropFilter: "blur(22px)", WebkitBackdropFilter: "blur(22px)", border: `1px solid ${p.border}`, animation: "mtrPop .35s cubic-bezier(.2,.8,.2,1)" }}>
         <button onClick={onClose} className="absolute top-4 right-4 p-2 rounded-full btn-magnet" style={{ background: p.bg3 }}><X size={18} style={{ color: p.text }} /></button>
 
         <div className="flex items-center gap-2 mb-7">
@@ -4068,70 +4109,72 @@ function Root() {
         </div>
       )}
 
-      {page === "home" && (
-        <>
-          <Hero setPage={goPage} featured={featuredProduct} brands={brands} onOpenProduct={setActiveProduct} />
-          <CategoryStrip onGoCategory={goCategory} categoryProducts={categoryProducts} />
-          <QuizBanner onOpen={() => setQuizOpen(true)} />
-          <ScrollGlassesStory featured={featuredProduct} />
-          <LensRevealBrands brands={brands} setPage={goPage} />
-          {deepDiscountProducts.length > 0 && (
+      <div key={page} className="mtr-page-enter">
+        {page === "home" && (
+          <>
+            <Hero setPage={goPage} featured={featuredProduct} brands={brands} onOpenProduct={setActiveProduct} />
+            <CategoryStrip onGoCategory={goCategory} categoryProducts={categoryProducts} />
+            <QuizBanner onOpen={() => setQuizOpen(true)} />
+            <ScrollGlassesStory featured={featuredProduct} />
+            <LensRevealBrands brands={brands} setPage={goPage} />
+            {deepDiscountProducts.length > 0 && (
+              <ProductRail
+                title="Réductions de plus de 65%"
+                eyebrow="Prix cassés — pour de vrai"
+                eyebrowColor={NEON.orange}
+                products={deepDiscountProducts}
+                brands={brands}
+                onOpen={setActiveProduct}
+                productInsights={productInsights}
+                wishlistIds={wishlistIds}
+                onToggleWishlist={toggleWishlist}
+              />
+            )}
             <ProductRail
-              title="Réductions de plus de 65%"
-              eyebrow="Prix cassés — pour de vrai"
-              eyebrowColor={NEON.orange}
-              products={deepDiscountProducts}
+              title="Verres holographiques à la une"
+              eyebrow="Sélection de la semaine"
+              eyebrowColor={NEON.pink}
+              products={products.filter((pr) => pr.featured)}
               brands={brands}
               onOpen={setActiveProduct}
               productInsights={productInsights}
               wishlistIds={wishlistIds}
               onToggleWishlist={toggleWishlist}
+              holo
             />
-          )}
-          <ProductRail
-            title="Verres holographiques à la une"
-            eyebrow="Sélection de la semaine"
-            eyebrowColor={NEON.pink}
-            products={products.filter((pr) => pr.featured)}
-            brands={brands}
-            onOpen={setActiveProduct}
-            productInsights={productInsights}
-            wishlistIds={wishlistIds}
-            onToggleWishlist={toggleWishlist}
-            holo
-          />
-          {products.some((pr) => productInsights[pr.id]?.lowStock) && (
-            <ProductRail
-              title="Il n'en reste que quelques-unes"
-              eyebrow="Stock limité — vraies quantités restantes"
-              eyebrowColor={NEG}
-              products={products.filter((pr) => productInsights[pr.id]?.lowStock)}
-              brands={brands}
-              onOpen={setActiveProduct}
-              productInsights={productInsights}
-              wishlistIds={wishlistIds}
-              onToggleWishlist={toggleWishlist}
-            />
-          )}
-          {recentlyViewed.length > 0 && (
-            <ProductRail
-              title="Repris là où vous en étiez"
-              eyebrow="Récemment consultés"
-              eyebrowColor={NEON.blue}
-              products={recentlyViewed.map((id) => products.find((pr) => pr.id === id)).filter(Boolean)}
-              brands={brands}
-              onOpen={setActiveProduct}
-              productInsights={productInsights}
-              wishlistIds={wishlistIds}
-              onToggleWishlist={toggleWishlist}
-            />
-          )}
-          <TrustBand />
-        </>
-      )}
-      {page === "catalogue" && <CatalogPage products={products} brands={brands} onOpen={setActiveProduct} initialFilter={catalogFilter} productInsights={productInsights} wishlistIds={wishlistIds} onToggleWishlist={toggleWishlist} />}
-      {page === "marques" && <BrandsPage brands={brands} products={products} setPage={goPage} />}
-      {page === "apropos" && <AboutPage setPage={goPage} />}
+            {products.some((pr) => productInsights[pr.id]?.lowStock) && (
+              <ProductRail
+                title="Il n'en reste que quelques-unes"
+                eyebrow="Stock limité — vraies quantités restantes"
+                eyebrowColor={NEG}
+                products={products.filter((pr) => productInsights[pr.id]?.lowStock)}
+                brands={brands}
+                onOpen={setActiveProduct}
+                productInsights={productInsights}
+                wishlistIds={wishlistIds}
+                onToggleWishlist={toggleWishlist}
+              />
+            )}
+            {recentlyViewed.length > 0 && (
+              <ProductRail
+                title="Repris là où vous en étiez"
+                eyebrow="Récemment consultés"
+                eyebrowColor={NEON.blue}
+                products={recentlyViewed.map((id) => products.find((pr) => pr.id === id)).filter(Boolean)}
+                brands={brands}
+                onOpen={setActiveProduct}
+                productInsights={productInsights}
+                wishlistIds={wishlistIds}
+                onToggleWishlist={toggleWishlist}
+              />
+            )}
+            <TrustBand />
+          </>
+        )}
+        {page === "catalogue" && <CatalogPage products={products} brands={brands} onOpen={setActiveProduct} initialFilter={catalogFilter} productInsights={productInsights} wishlistIds={wishlistIds} onToggleWishlist={toggleWishlist} />}
+        {page === "marques" && <BrandsPage brands={brands} products={products} setPage={goPage} />}
+        {page === "apropos" && <AboutPage setPage={goPage} />}
+      </div>
 
       <Footer setPage={goPage} onGoAdmin={goAdmin} />
 
@@ -4219,7 +4262,32 @@ function IntroScreen({ onDone }) {
   );
 }
 
+// Fires a small ripple from the click point on any button/link across the whole site — a single
+// listener rather than instrumenting every button individually.
+function useGlobalRipple() {
+  useEffect(() => {
+    const onPointerDown = (e) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      const target = e.target.closest?.("button, [role='button'], a");
+      if (!target || target.disabled) return;
+      const rect = target.getBoundingClientRect();
+      if (getComputedStyle(target).position === "static") target.style.position = "relative";
+      const ripple = document.createElement("span");
+      ripple.className = "mtr-ripple";
+      const size = Math.max(rect.width, rect.height) * 1.3;
+      ripple.style.width = ripple.style.height = `${size}px`;
+      ripple.style.left = `${e.clientX - rect.left - size / 2}px`;
+      ripple.style.top = `${e.clientY - rect.top - size / 2}px`;
+      target.appendChild(ripple);
+      ripple.addEventListener("animationend", () => ripple.remove());
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, []);
+}
+
 export default function App() {
+  useGlobalRipple();
   const [showIntro, setShowIntro] = useState(() => {
     try { return sessionStorage.getItem("monture_intro_seen") !== "1"; } catch { return true; }
   });
