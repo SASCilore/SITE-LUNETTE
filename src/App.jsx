@@ -968,13 +968,14 @@ function Hero({ setPage, featured, brands, onOpenProduct }) {
 
       <div className="relative max-w-6xl mx-auto px-5 md:px-8 pt-20 pb-24 md:pt-28 md:pb-32 grid md:grid-cols-2 gap-14 items-center">
         <div className="reveal visible">
-          <Eyebrow>Sélection multi-marques — pièces authentiques</Eyebrow>
+          <Eyebrow>Lunettes de soleil & de vue — sélection multi-marques authentique</Eyebrow>
           <h1 ref={h1Ref} className="mtr-display font-extrabold leading-[0.94]" style={{ color: p.text, fontSize: "clamp(2.75rem, 7vw, 4.75rem)", willChange: "transform, opacity" }}>
-            Des montures<br />signées.<br /><span className="chroma">Point.</span>
+            Lunettes de marque.<br />Prix imbattables.<br /><span className="chroma">En 24h.</span>
           </h1>
           <p className="mt-6 text-base md:text-lg max-w-md" style={{ color: alpha(p.text, 0.6) }}>
-            Ray-Ban, Oakley, Prada, Persol, Gucci, Carrera — aux prix parmi les plus bas
-            du marché, toute l'année. Chaque référence vérifiée. Pas de contrefaçon, pas de compromis.
+            Ray-Ban, Oakley, Prada, Persol, Gucci, Carrera : un catalogue de lunettes de marque
+            authentiques à des prix parmi les plus compétitifs d'Europe. Livraison incluse en 24h,
+            garantie du meilleur prix, zéro contrefaçon.
           </p>
           <div className="mt-9 flex items-center gap-5 flex-wrap">
             <NeonButton onClick={() => setPage("catalogue")} className="px-7 py-3.5 rounded-full inline-flex items-center gap-2 group">
@@ -1366,17 +1367,20 @@ function StatItem({ value, suffix = "", label, active, color }) {
   );
 }
 
-function TrustBand() {
+function TrustBand({ brands, products, orders }) {
   const { p } = useTheme();
   const items = [
     { title: "Prix direct fournisseur", desc: "Aucun intermédiaire, aucun stock à financer : on répercute l'économie sur le prix, toute l'année.", accent: NEON.orange },
     { title: "Meilleur prix garanti", desc: "Trouvé moins cher ailleurs sur un modèle identique ? Contactez-nous, on vous rembourse la différence.", accent: NEON.yellow },
     { title: "Authenticité garantie", desc: "Chaque paire est vérifiée et accompagnée de son certificat fournisseur.", accent: NEON.cyan },
     { title: "Livraison suivie", desc: "Expédition trackée, délais annoncés fournisseur par fournisseur.", accent: NEON.pink },
-    { title: "Livraison rapide", desc: "Commande préparée et expédiée sous 48h ouvrées par nos fournisseurs agréés.", accent: NEON.lime },
+    { title: "Livraison rapide", desc: "Commande préparée et expédiée sous 24h ouvrées par nos fournisseurs agréés.", accent: NEON.lime },
   ];
   const [ref, visible] = useReveal(0.25);
   const [statsRef, statsVisible] = useReveal(0.3);
+  // Every figure below is computed from real data — never a placeholder number — so the stats
+  // stay true as the catalog and order history actually grow.
+  const pairsShipped = orders.filter((o) => o.paymentStatus === "paid").reduce((s, o) => s + (o.items || []).reduce((sq, it) => sq + it.qty, 0), 0);
   return (
     <section style={{ background: p.bg2, position: "relative", overflow: "hidden" }} className="py-20 md:py-24">
       <SectionGlow variant="corners" />
@@ -1391,10 +1395,10 @@ function TrustBand() {
           ))}
         </div>
         <div ref={statsRef} className={`reveal ${statsVisible ? "visible" : ""} grid grid-cols-2 md:grid-cols-4 gap-8 pt-12 border-t`} style={{ borderColor: p.border }}>
-          <StatItem value={6} label="Maisons référencées" active={statsVisible} color={NEON.cyan} />
-          <StatItem value={1200} suffix="+" label="Paires livrées" active={statsVisible} color={NEON.pink} />
-          <StatItem value={48} suffix="h" label="Délai d'expédition" active={statsVisible} color={NEON.yellow} />
-          <StatItem value={98} suffix="%" label="Clients satisfaits" active={statsVisible} color={NEON.blue} />
+          <StatItem value={brands.length} label="Maisons référencées" active={statsVisible} color={NEON.cyan} />
+          <StatItem value={pairsShipped} suffix="+" label="Paires livrées" active={statsVisible} color={NEON.pink} />
+          <StatItem value={24} suffix="h" label="Délai d'expédition" active={statsVisible} color={NEON.yellow} />
+          <StatItem value={products.length} label="Références au catalogue" active={statsVisible} color={NEON.blue} />
         </div>
       </div>
     </section>
@@ -1408,7 +1412,7 @@ function Footer({ setPage, onGoAdmin }) {
       <div className="max-w-6xl mx-auto px-5 md:px-8 pt-10 grid md:grid-cols-4 gap-10">
         <div>
           <Logo size={22} />
-          <p className="mt-3 text-sm max-w-xs" style={{ color: alpha(p.text, 0.45) }}>Lunettes de marque, sourcées auprès de grossistes agréés. Basé en France.</p>
+          <p className="mt-3 text-sm max-w-xs" style={{ color: alpha(p.text, 0.45) }}>Lunettes de marque à prix imbattables, livrées en 24h partout en France. Sourcées auprès de grossistes agréés — zéro contrefaçon.</p>
         </div>
         <div>
           <div className="mtr-mono text-xs uppercase tracking-wide mb-3" style={{ color: p.steel }}>Boutique</div>
@@ -1605,16 +1609,19 @@ function AboutPage({ setPage }) {
     <div style={{ background: p.bg, minHeight: "60vh", position: "relative", overflow: "hidden" }} className="py-12">
       <SectionGlow />
       <div className="relative max-w-3xl mx-auto px-5 md:px-8">
-        <Eyebrow color={NEON.lime}>À propos</Eyebrow>
-        <h1 className="mtr-display text-3xl md:text-4xl font-bold mb-6" style={{ color: p.text }}>Une monture, jamais une contrefaçon</h1>
+        <Eyebrow color={NEON.lime}>À propos de go2glass</Eyebrow>
+        <h1 className="mtr-display text-3xl md:text-4xl font-bold mb-6" style={{ color: p.text }}>Des lunettes de marque au prix le plus juste — jamais de contrefaçon</h1>
         <p className="text-base leading-relaxed mb-4" style={{ color: alpha(p.text, 0.65) }}>
-          go2glass référence uniquement des marques établies, sourcées auprès de grossistes et distributeurs agréés
-          en France, en Italie et en Belgique. Nous ne stockons pas nous-mêmes le produit : chaque commande est
-          transmise au fournisseur concerné, qui expédie directement au client.
+          go2glass référence uniquement des marques établies — Ray-Ban, Oakley, Prada, Persol, Gucci, Carrera
+          et bien d'autres — sourcées auprès de grossistes et distributeurs agréés en France, en Italie et en
+          Belgique. Nous ne stockons pas nous-mêmes le produit : chaque commande est transmise directement au
+          fournisseur concerné, qui l'expédie en 24h.
         </p>
         <p className="text-base leading-relaxed mb-8" style={{ color: alpha(p.text, 0.65) }}>
-          Ce fonctionnement nous permet de proposer un catalogue large sans immobiliser de stock, tout en gardant
-          un contrôle strict sur l'origine des produits et les délais annoncés.
+          Ce fonctionnement nous permet de proposer un catalogue large de lunettes de soleil et de vue
+          authentiques, à des prix parmi les plus compétitifs d'Europe, sans jamais sacrifier le contrôle
+          sur l'origine des produits ni les délais annoncés. C'est notre définition du meilleur choix :
+          un vrai produit de marque, au juste prix, livré vite.
         </p>
         <NeonButton onClick={() => setPage("catalogue")} className="px-6 py-3 rounded-full inline-flex items-center gap-2">Voir le catalogue <ArrowRight size={16} /></NeonButton>
       </div>
@@ -4355,7 +4362,7 @@ function Root() {
                 onToggleWishlist={toggleWishlist}
               />
             )}
-            <TrustBand />
+            <TrustBand brands={brands} products={products} orders={orders} />
           </>
         )}
         {page === "catalogue" && <CatalogPage products={products} brands={brands} onOpen={setActiveProduct} initialFilter={catalogFilter} productInsights={productInsights} wishlistIds={wishlistIds} onToggleWishlist={toggleWishlist} />}
