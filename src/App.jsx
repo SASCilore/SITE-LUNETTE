@@ -132,6 +132,24 @@ function useTilt(strength = 9) {
   return { ref, style, onMouseMove, onMouseLeave };
 }
 
+// Desktop-only: while hovering a product card, cycles through its other photos so a shopper sees
+// more of the product without clicking. No-op (and harmless) on touch, since touch never fires
+// mouseenter — it simply won't animate there, no separate code path needed.
+function useHoverCyclePhotos(photos) {
+  const [index, setIndex] = useState(0);
+  const timerRef = useRef(null);
+  const start = () => {
+    if (!photos || photos.length <= 1) return;
+    timerRef.current = setInterval(() => setIndex((i) => (i + 1) % photos.length), 750);
+  };
+  const stop = () => {
+    clearInterval(timerRef.current);
+    setIndex(0);
+  };
+  useEffect(() => () => clearInterval(timerRef.current), []);
+  return { index, start, stop };
+}
+
 function smoothstep(edge0, edge1, x) {
   const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
@@ -331,8 +349,9 @@ function GlassesGlyph({ shape = "square", tint = NEON.cyan, stroke = "rgba(154,1
 
 // Shows the real product photo when one has been uploaded/imported; falls back to the illustrated
 // glyph otherwise (e.g. freshly imported rows with no photo yet, or the demo brands).
-function ProductVisual({ product, holo = false, stroke, className = "" }) {
-  const cover = product?.photos && product.photos.length > 0 ? product.photos[0] : null;
+function ProductVisual({ product, holo = false, stroke, className = "", photoIndex = 0 }) {
+  const photos = product?.photos;
+  const cover = photos && photos.length > 0 ? (photos[photoIndex] || photos[0]) : null;
   if (cover) {
     return (
       <img
@@ -811,7 +830,7 @@ function AnnounceBar() {
   );
 }
 
-function SiteHeader({ page, setPage, onGoCategory, cartCount, onOpenCart, onGoAdmin, mobileOpen, setMobileOpen, session, loyaltyPoints, wishlistCount, onOpenWishlist, onOpenAccount }) {
+function SiteHeader({ page, setPage, onGoCategory, cartCount, onOpenCart, onGoAdmin, mobileOpen, setMobileOpen, session, loyaltyPoints, wishlistCount, onOpenWishlist, onOpenAccount, onOpenSearch }) {
   const { p } = useTheme();
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
@@ -853,6 +872,9 @@ function SiteHeader({ page, setPage, onGoCategory, cartCount, onOpenCart, onGoAd
           <NavLink target="apropos">À propos</NavLink>
         </nav>
         <div className="flex items-center gap-3 shrink-0">
+          <button onClick={onOpenSearch} className="hidden lg:flex items-center gap-2 px-3 py-2 rounded-full text-xs" style={{ background: alpha(p.text, 0.06), color: p.steel }} aria-label="Recherche instantanée">
+            <Search size={14} /> <span className="mtr-mono">⌘K</span>
+          </button>
           <div className="hidden lg:block"><ThemeToggle compact /></div>
           {session && (
             <span className="hidden md:inline-flex items-center gap-1.5 mtr-mono text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: alpha(NEON.orange, 0.14), color: NEON.orange }}>
@@ -1212,10 +1234,19 @@ function ProductCard({ product, brand, onOpen, index = 0, insights, isWishlisted
   const { p, dark } = useTheme();
   const [ref, visible] = useReveal(0.1);
   const tilt = useTilt(8);
+  const hoverPhotos = useHoverCyclePhotos(product.photos);
   const accent = BRAND_ACCENT[product.brandId] || PRIMARY;
   return (
     <div ref={ref} className={`reveal ${visible ? "visible" : ""}`} style={{ transitionDelay: `${(index % 4) * 70}ms` }}>
-      <button ref={tilt.ref} onMouseMove={tilt.onMouseMove} onMouseLeave={tilt.onMouseLeave} onClick={() => onOpen(product)} className="glyph-card card-lift neon-border group relative text-left rounded-2xl overflow-hidden w-full" style={{ ...tilt.style, background: p.bg2, border: `1px solid ${dark ? p.border : alpha(accent, 0.4)}`, "--edge": accent }}>
+      <button
+        ref={tilt.ref}
+        onMouseMove={tilt.onMouseMove}
+        onMouseEnter={hoverPhotos.start}
+        onMouseLeave={(e) => { tilt.onMouseLeave(e); hoverPhotos.stop(); }}
+        onClick={() => onOpen(product)}
+        className="glyph-card card-lift neon-border group relative text-left rounded-2xl overflow-hidden w-full"
+        style={{ ...tilt.style, background: p.bg2, border: `1px solid ${dark ? p.border : alpha(accent, 0.4)}`, "--edge": accent }}
+      >
         {!dark && <div style={{ height: 3, background: accent }} />}
         {onToggleWishlist && (
           <div
@@ -1231,7 +1262,14 @@ function ProductCard({ product, brand, onOpen, index = 0, insights, isWishlisted
           </div>
         )}
         <div className="relative p-6 pb-2">
-          <ProductVisual product={product} stroke={alpha(p.text, 0.5)} />
+          <ProductVisual product={product} stroke={alpha(p.text, 0.5)} photoIndex={hoverPhotos.index} />
+          {product.photos && product.photos.length > 1 && (
+            <div className="absolute bottom-1 inset-x-0 flex items-center justify-center gap-1">
+              {product.photos.map((_, i) => (
+                <span key={i} className="rounded-full transition-all" style={{ width: i === hoverPhotos.index ? 10 : 4, height: 4, background: i === hoverPhotos.index ? accent : alpha(p.text, 0.2) }} />
+              ))}
+            </div>
+          )}
           <div className="absolute inset-x-4 bottom-1 text-center text-[11px] mtr-mono uppercase tracking-wide opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: accent }}>Voir la fiche →</div>
         </div>
         <div className="px-5 pb-5 pt-2">
@@ -1980,6 +2018,27 @@ function CartDrawer({ open, onClose, cart, products, brands, updateQty, removeIt
 }
 
 // Floating bar that appears as soon as at least one product is added to the comparison.
+// Persistent mini-cart, desktop only (the header cart icon already covers mobile — there's no
+// spare screen real estate there for a second, always-visible summary). Sits bottom-right,
+// deliberately opposite CompareBar (bottom-center) so the two never collide.
+function FloatingCartWidget({ cartCount, subtotal, onOpen }) {
+  const { p } = useTheme();
+  if (cartCount === 0) return null;
+  return (
+    <button
+      onClick={onOpen}
+      className="hidden lg:flex fixed bottom-6 right-6 z-40 items-center gap-3 pl-3 pr-5 py-3 rounded-full btn-magnet"
+      style={{ background: alpha(p.bg2, 0.85), backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", border: `1px solid ${p.borderStrong}`, boxShadow: "0 12px 32px -8px rgba(0,0,0,.35)" }}
+    >
+      <span className="relative flex items-center justify-center w-9 h-9 rounded-full" style={{ background: alpha(PRIMARY, 0.14) }}>
+        <ShoppingBag size={16} style={{ color: PRIMARY }} />
+        <span className="absolute -top-1.5 -right-1.5 text-[10px] w-4.5 h-4.5 min-w-[18px] min-h-[18px] rounded-full flex items-center justify-center font-bold" style={{ background: PRIMARY, color: "#07080A" }}>{cartCount}</span>
+      </span>
+      <span className="text-sm font-bold" style={{ color: p.text }}>{euro(subtotal)}</span>
+    </button>
+  );
+}
+
 function CompareBar({ compareIds, products, onOpen, onClear }) {
   const { p } = useTheme();
   if (compareIds.length === 0) return null;
@@ -2177,6 +2236,109 @@ function QuizBanner({ onOpen }) {
         </button>
       </div>
     </section>
+  );
+}
+
+// Instant Cmd/Ctrl+K search — jumps straight to a product, brand, or page without navigating
+// menus. Desktop-oriented: the keyboard shortcut is the primary entry point, though the header
+// button gives mouse users a way in too.
+function CommandPalette({ open, onClose, products, brands, onOpenProduct, setPage }) {
+  const { p } = useTheme();
+  const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (open) {
+      setQuery(""); setActiveIndex(0);
+      const t = setTimeout(() => inputRef.current?.focus(), 40);
+      return () => clearTimeout(t);
+    }
+  }, [open]);
+
+  const results = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const pages = [
+      { type: "page", label: "Accueil", action: () => setPage("home") },
+      { type: "page", label: "Catalogue", action: () => setPage("catalogue") },
+      { type: "page", label: "Marques", action: () => setPage("marques") },
+      { type: "page", label: "À propos", action: () => setPage("apropos") },
+    ].filter((it) => !q || it.label.toLowerCase().includes(q));
+
+    if (!q) return pages;
+
+    const brandName = (id) => brands.find((b) => b.id === id)?.name || "";
+    const prodMatches = products
+      .filter((pr) => pr.name.toLowerCase().includes(q) || brandName(pr.brandId).toLowerCase().includes(q))
+      .slice(0, 6)
+      .map((pr) => ({ type: "product", label: pr.name, sub: brandName(pr.brandId), product: pr, action: () => onOpenProduct(pr) }));
+
+    const brandMatches = brands
+      .filter((b) => b.name.toLowerCase().includes(q))
+      .slice(0, 4)
+      .map((b) => ({ type: "brand", label: b.name, action: () => setPage("catalogue") }));
+
+    return [...pages, ...prodMatches, ...brandMatches];
+  }, [query, products, brands]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { setActiveIndex(0); }, [query]);
+
+  if (!open) return null;
+
+  const onKeyDown = (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); setActiveIndex((i) => Math.min(i + 1, results.length - 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setActiveIndex((i) => Math.max(i - 1, 0)); }
+    else if (e.key === "Enter") { e.preventDefault(); const r = results[activeIndex]; if (r) { r.action(); onClose(); } }
+    else if (e.key === "Escape") { onClose(); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-start justify-center pt-[12vh] px-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-xl rounded-2xl overflow-hidden"
+        style={{ background: alpha(p.bg2, 0.85), backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)", border: `1px solid ${p.border}`, boxShadow: "0 24px 60px -12px rgba(0,0,0,.5)", animation: "mtrPop .25s cubic-bezier(.2,.8,.2,1)" }}
+      >
+        <div className="flex items-center gap-3 px-5 py-4 border-b" style={{ borderColor: p.border }}>
+          <Search size={18} style={{ color: p.steel }} />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="Rechercher un produit, une marque, une page…"
+            className="flex-1 bg-transparent outline-none text-sm"
+            style={{ color: p.text }}
+          />
+          <span className="text-[10px] mtr-mono px-1.5 py-0.5 rounded" style={{ background: p.bg3, color: p.steel }}>ESC</span>
+        </div>
+        <div className="max-h-[50vh] overflow-y-auto py-2">
+          {results.length === 0 ? (
+            <p className="px-5 py-6 text-sm text-center" style={{ color: p.steel }}>Aucun résultat.</p>
+          ) : (
+            results.map((r, i) => (
+              <button
+                key={`${r.type}-${r.label}-${i}`}
+                onClick={() => { r.action(); onClose(); }}
+                onMouseEnter={() => setActiveIndex(i)}
+                className="w-full flex items-center gap-3 px-5 py-2.5 text-left"
+                style={{ background: i === activeIndex ? alpha(PRIMARY, 0.12) : "transparent" }}
+              >
+                {r.type === "product" && (r.product.photos?.[0] ? <img src={r.product.photos[0]} className="w-8 h-8 object-contain rounded shrink-0" alt="" /> : <div className="w-8 h-8 rounded shrink-0" style={{ background: p.bg3 }} />)}
+                {r.type === "page" && <ArrowRight size={14} style={{ color: p.steel }} className="shrink-0" />}
+                {r.type === "brand" && <Building2 size={14} style={{ color: p.steel }} className="shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate" style={{ color: p.text }}>{r.label}</div>
+                  {r.sub && <div className="text-xs truncate" style={{ color: p.steel }}>{r.sub}</div>}
+                </div>
+                {r.type === "product" && <span className="text-xs font-semibold shrink-0" style={{ color: p.text }}>{euro(r.product.price)}</span>}
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -3798,6 +3960,19 @@ function Root() {
   const [quizOpen, setQuizOpen] = useState(false);
   const [compareIds, setCompareIds] = useState([]);
   const [compareOpen, setCompareOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // Cmd/Ctrl+K opens the instant search palette from anywhere on the site.
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [activeProduct, setActiveProduct] = useState(null);
   const [catalogFilter, setCatalogFilter] = useState({ category: "Tous", gender: "Tous" });
@@ -4092,7 +4267,7 @@ function Root() {
   return (
     <div className="mtr grain" style={{ background: p.bg, minHeight: "100vh" }}>
       <AnnounceBar />
-      <SiteHeader page={page} setPage={goPage} onGoCategory={goCategory} cartCount={cartCount} onOpenCart={() => setCartOpen(true)} onGoAdmin={goAdmin} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} session={session} loyaltyPoints={profile?.loyaltyPoints || 0} wishlistCount={wishlistIds.length} onOpenWishlist={() => setWishlistOpen(true)} onOpenAccount={() => setAccountOpen(true)} />
+      <SiteHeader page={page} setPage={goPage} onGoCategory={goCategory} cartCount={cartCount} onOpenCart={() => setCartOpen(true)} onGoAdmin={goAdmin} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} session={session} loyaltyPoints={profile?.loyaltyPoints || 0} wishlistCount={wishlistIds.length} onOpenWishlist={() => setWishlistOpen(true)} onOpenAccount={() => setAccountOpen(true)} onOpenSearch={() => setPaletteOpen(true)} />
 
       {checkoutNotice && (
         <div className="relative z-30" style={{ background: checkoutNotice.type === "success" ? alpha(NEON.lime, 0.14) : alpha(NEON.yellow, 0.14) }}>
@@ -4197,6 +4372,8 @@ function Root() {
       <WishlistDrawer open={wishlistOpen} onClose={() => setWishlistOpen(false)} wishlistIds={wishlistIds} products={products} brands={brands} onRemove={toggleWishlist} onAddToCart={addToCart} onOpenProduct={setActiveProduct} />
       <AccountDrawer open={accountOpen} onClose={() => setAccountOpen(false)} session={session} profile={profile} orders={orders} onSignIn={signIn} onSignUp={signUp} onSignOut={async () => { await signOut(); setAccountOpen(false); }} />
       <QuizWidget open={quizOpen} onClose={() => setQuizOpen(false)} products={products} brands={brands} onOpenProduct={setActiveProduct} onGoCategory={goCategory} />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} products={products} brands={brands} onOpenProduct={setActiveProduct} setPage={goPage} />
+      <FloatingCartWidget cartCount={cartCount} subtotal={cart.reduce((s, c) => s + (products.find((pr) => pr.id === c.productId)?.price || 0) * c.qty, 0)} onOpen={() => setCartOpen(true)} />
       <CompareBar compareIds={compareIds} products={products} onOpen={() => setCompareOpen(true)} onClear={() => setCompareIds([])} />
       <CompareModal open={compareOpen} onClose={() => setCompareOpen(false)} compareIds={compareIds} products={products} brands={brands} productInsights={productInsights} onRemove={toggleCompare} />
       <CheckoutWizard
