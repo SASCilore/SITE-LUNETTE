@@ -280,7 +280,7 @@ function GlobalStyle() {
 
       /* Lens sweep reveal (brand strip signature) — glyph position drives a pixel-synced mask */
       .lens-reveal { position: relative; overflow: hidden; }
-      .lens-row { position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-around; padding: 0 4%; }
+      .lens-row { position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-around; gap: 3rem; padding: 0 4%; }
       .lens-row span { font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: 0.12em; font-weight: 600; font-size: clamp(1rem, 2.6vw, 1.55rem); white-space: nowrap; }
       .lens-row-masked {
         background: linear-gradient(90deg, ${NEON.cyan}, ${NEON.pink} 55%, ${NEON.lime});
@@ -1152,6 +1152,18 @@ function LensRevealBrands({ brands, setPage }) {
   const maskElRef = useRef(null);
   const [containerWidth, setContainerWidth] = useState(800);
   const GLYPH_W = 130, GLYPH_H = 60;
+
+  // A random subset (not the whole list) so there's actually room to breathe between names —
+  // with 20+ brands crammed edge-to-edge there's no space left for justify-content to distribute.
+  // Picked once per mount (changes on refresh / on returning to the homepage), not re-shuffled on
+  // every render.
+  const displayBrandsRef = useRef(null);
+  if (displayBrandsRef.current === null && brands.length > 0) {
+    const shuffled = [...brands].sort(() => Math.random() - 0.5);
+    displayBrandsRef.current = shuffled.slice(0, Math.min(7, shuffled.length));
+  }
+  const displayBrands = displayBrandsRef.current || [];
+
   // Lens centers/radii as fractions of the glyph's own box (matches the SVG viewBox 0 0 200 90 geometry)
   const LENS_CX = [56 / 200, 144 / 200];
   const LENS_CY = 45 / 90;
@@ -1207,14 +1219,14 @@ function LensRevealBrands({ brands, setPage }) {
       <div ref={sectionRef}>
         <div ref={containerRef} className="lens-reveal max-w-6xl mx-auto" style={{ height: 130 }}>
           <div className="lens-row">
-            {brands.map((b) => (
+            {displayBrands.map((b) => (
               <span key={b.id} onClick={() => setPage("catalogue")} className="cursor-pointer" style={{ color: alpha(p.text, 0.26) }}>{b.name}</span>
             ))}
           </div>
           {visible && (
             <>
               <div ref={maskElRef} className="lens-row lens-row-masked pointer-events-none">
-                {brands.map((b) => <span key={b.id}>{b.name}</span>)}
+                {displayBrands.map((b) => <span key={b.id}>{b.name}</span>)}
               </div>
               <div ref={glyphElRef} className="lens-glyph-travel" style={{ left: 0, top: "50%", transform: "translate(-100px,-50%)" }}>
                 <GlassesGlyph shape="square" tint={NEON.cyan} stroke="rgba(255,255,255,0.9)" />
