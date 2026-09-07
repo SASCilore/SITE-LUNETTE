@@ -135,6 +135,29 @@ function useTilt(strength = 9) {
 // Desktop-only: while hovering a product card, cycles through its other photos so a shopper sees
 // more of the product without clicking. No-op (and harmless) on touch, since touch never fires
 // mouseenter — it simply won't animate there, no separate code path needed.
+// Only ever fed a real timestamp (a promo code's genuine expires_at from the admin) — never a
+// fabricated countdown that resets on reload, which is exactly the kind of dark pattern the EU's
+// Digital Services Act now targets.
+function useCountdown(targetIso) {
+  const [label, setLabel] = useState("");
+  useEffect(() => {
+    if (!targetIso) { setLabel(""); return; }
+    const target = new Date(targetIso).getTime();
+    const tick = () => {
+      const diff = target - Date.now();
+      if (diff <= 0) { setLabel("Expiré"); return; }
+      const days = Math.floor(diff / 86400000);
+      const hours = Math.floor((diff % 86400000) / 3600000);
+      const mins = Math.floor((diff % 3600000) / 60000);
+      setLabel(days > 0 ? `${days} j ${hours} h` : hours > 0 ? `${hours} h ${mins} min` : `${mins} min`);
+    };
+    tick();
+    const id = setInterval(tick, 30000);
+    return () => clearInterval(id);
+  }, [targetIso]);
+  return label;
+}
+
 function useHoverCyclePhotos(photos) {
   const [index, setIndex] = useState(0);
   const timerRef = useRef(null);
@@ -740,7 +763,7 @@ function Pill({ children, style, className = "" }) {
 
 // Displays the selling price, and — only when a genuine reference price is set on the product
 // (never fabricated) — a struck-through original price and a "-X%" badge next to it.
-function PriceTag({ price, compareAt, className = "font-bold", color }) {
+function PriceTag({ price, compareAt, className = "font-bold", color, showSavings = false }) {
   const { p } = useTheme();
   const hasDiscount = compareAt && compareAt > price;
   const pct = hasDiscount ? Math.round((1 - price / compareAt) * 100) : 0;
@@ -751,6 +774,9 @@ function PriceTag({ price, compareAt, className = "font-bold", color }) {
         <>
           <span className="text-sm line-through" style={{ color: p.steel }}>{euro(compareAt)}</span>
           <span className="mtr-mono text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: alpha(NEON.pink, 0.18), color: NEON.pink, boxShadow: `0 0 8px ${alpha(NEON.pink, 0.4)}` }}>-{pct}%</span>
+          {showSavings && (
+            <span className="text-xs font-semibold w-full" style={{ color: NEON.lime }}>Vous économisez {euro(compareAt - price)}</span>
+          )}
         </>
       )}
     </span>
@@ -780,6 +806,7 @@ function ProductBadges({ insights, className = "" }) {
   return (
     <div className={`flex flex-wrap gap-1.5 ${className}`}>
       {insights.isBestSeller && <Pill style={{ background: alpha(NEON.orange, 0.16), color: NEON.orange }}>★ Best-seller</Pill>}
+      {insights.isRecommended && <Pill style={{ background: alpha(NEON.violet, 0.16), color: NEON.violet }}>Recommandé</Pill>}
       {insights.isNew && <Pill style={{ background: alpha(NEON.blue, 0.16), color: NEON.blue }}>Nouveau</Pill>}
       {insights.lowStock && <Pill style={{ background: alpha(NEG, 0.16), color: NEG }}>Plus que {insights.stockQuantity} en stock</Pill>}
     </div>
@@ -1289,7 +1316,7 @@ function ProductCard({ product, brand, onOpen, index = 0, insights, isWishlisted
           <div className="mtr-mono text-[10px] uppercase tracking-[0.14em]" style={{ color: accent }}>{brand?.name}</div>
           <div className="mt-1 font-semibold" style={{ color: p.text }}>{product.name}</div>
           <div className="mt-1 mtr-mono text-[11px]" style={{ color: p.steel }}>{product.calibre} · {product.colorName}</div>
-          {insights && (insights.isBestSeller || insights.isNew || insights.lowStock) && <ProductBadges insights={insights} className="mt-2" />}
+          {insights && (insights.isBestSeller || insights.isRecommended || insights.isNew || insights.lowStock) && <ProductBadges insights={insights} className="mt-2" />}
           <div className="mt-3 flex items-center justify-between">
             <PriceTag price={product.price} compareAt={product.compareAtPrice} className="font-bold" />
             {product.stock !== "En stock" && <Pill style={{ background: alpha(NEG, 0.14), color: NEG }}>{product.stock}</Pill>}
@@ -1343,7 +1370,7 @@ function ProductRail({ title, eyebrow, eyebrowColor = NEON.pink, products, brand
                     <div className="mtr-mono text-[10px] uppercase tracking-[0.14em]" style={{ color: accent }}>{brand?.name}</div>
                     <div className="mt-1 font-semibold" style={{ color: p.text }}>{pr.name}</div>
                     <div className="mt-1 mtr-mono text-[11px]" style={{ color: p.steel }}>{pr.calibre} · {pr.colorName}</div>
-                    {insights && (insights.isBestSeller || insights.isNew || insights.lowStock) && <ProductBadges insights={insights} className="mt-2" />}
+                    {insights && (insights.isBestSeller || insights.isRecommended || insights.isNew || insights.lowStock) && <ProductBadges insights={insights} className="mt-2" />}
                     <div className="mt-3"><PriceTag price={pr.price} compareAt={pr.compareAtPrice} className="font-bold" /></div>
                   </div>
                 </button>
@@ -1449,6 +1476,7 @@ function CatalogPage({ products, brands, onOpen, initialFilter, productInsights,
   const [category, setCategory] = useState(initialFilter?.category || "Tous");
   const [gender, setGender] = useState(initialFilter?.gender || "Tous");
   const [priceRange, setPriceRange] = useState("Tous");
+  const [sortBy, setSortBy] = useState("recommande");
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Re-syncs when the user clicks a different category link in the header while already on this
@@ -1465,7 +1493,7 @@ function CatalogPage({ products, brands, onOpen, initialFilter, productInsights,
   const toggleBrand = (id) => setBrandFilter((f) => (f.includes(id) ? f.filter((x) => x !== id) : [...f, id]));
 
   const filtered = useMemo(() => {
-    return products.filter((pr) => {
+    const base = products.filter((pr) => {
       const brand = brands.find((b) => b.id === pr.brandId);
       if (query && !`${pr.name} ${brand?.name}`.toLowerCase().includes(query.toLowerCase())) return false;
       if (brandFilter.length && !brandFilter.includes(pr.brandId)) return false;
@@ -1477,7 +1505,23 @@ function CatalogPage({ products, brands, onOpen, initialFilter, productInsights,
       if (priceRange === "150+" && pr.price <= 150) return false;
       return true;
     });
-  }, [products, brands, query, brandFilter, category, gender, priceRange]);
+    const sorted = [...base];
+    if (sortBy === "price-asc") sorted.sort((a, b) => a.price - b.price);
+    else if (sortBy === "price-desc") sorted.sort((a, b) => b.price - a.price);
+    else if (sortBy === "nouveautes") sorted.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    else {
+      // "Recommandé" (default): genuinely best-value and best-selling items first — reduces
+      // choice overload by surfacing the products most likely to satisfy first, using only real
+      // signals (real discount, real sales, real ratings), never a hand-picked order.
+      const score = (pr) => {
+        const ins = productInsights?.[pr.id];
+        if (!ins) return 0;
+        return (ins.isRecommended ? 3 : 0) + (ins.isBestSeller ? 2 : 0) + (ins.avgRating ? ins.avgRating / 5 : 0);
+      };
+      sorted.sort((a, b) => score(b) - score(a));
+    }
+    return sorted;
+  }, [products, brands, query, brandFilter, category, gender, priceRange, sortBy, productInsights]);
 
   const inputStyle = { background: p.inputBg, border: `1px solid ${p.borderStrong}`, color: p.text };
 
@@ -1539,7 +1583,15 @@ function CatalogPage({ products, brands, onOpen, initialFilter, productInsights,
         <div className="grid md:grid-cols-[220px_1fr] gap-10">
           <aside className="hidden md:block">{filtersPanel}</aside>
           <div>
-            <div className="mb-4 text-sm" style={{ color: alpha(p.text, 0.45) }}>{filtered.length} résultat{filtered.length > 1 ? "s" : ""}</div>
+            <div className="mb-4 flex items-center justify-between text-sm">
+              <span style={{ color: alpha(p.text, 0.45) }}>{filtered.length} résultat{filtered.length > 1 ? "s" : ""}</span>
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="text-sm rounded-full px-3 py-1.5 outline-none" style={{ background: p.bg2, border: `1px solid ${p.border}`, color: p.text }}>
+                <option value="recommande">Trier : Recommandé</option>
+                <option value="nouveautes">Nouveautés</option>
+                <option value="price-asc">Prix croissant</option>
+                <option value="price-desc">Prix décroissant</option>
+              </select>
+            </div>
             {filtered.length === 0 ? (
               <div className="py-20 text-center rounded-2xl" style={{ background: p.bg2, border: `1px dashed ${p.borderStrong}` }}>
                 <p className="font-medium" style={{ color: p.text }}>Aucune monture ne correspond à ces filtres</p>
@@ -1744,6 +1796,7 @@ function ProductModal({ product, brand, onClose, onAddToCart, insights, isWishli
       name: product.name,
       image: product.photos && product.photos.length ? product.photos : undefined,
       description: product.description || undefined,
+      gtin13: product.ean || undefined,
       offers: {
         "@type": "Offer",
         priceCurrency: "EUR",
@@ -1793,8 +1846,8 @@ function ProductModal({ product, brand, onClose, onAddToCart, insights, isWishli
                 <span className="text-xs" style={{ color: p.steel }}>{insights.avgRating.toFixed(1)} ({insights.reviewCount} avis)</span>
               </div>
             )}
-            {insights && (insights.isBestSeller || insights.isNew || insights.lowStock) && <ProductBadges insights={insights} className="mt-2" />}
-            <div className="mt-3"><PriceTag price={product.price} compareAt={product.compareAtPrice} className="text-2xl font-extrabold" /></div>
+            {insights && (insights.isBestSeller || insights.isRecommended || insights.isNew || insights.lowStock) && <ProductBadges insights={insights} className="mt-2" />}
+            <div className="mt-3"><PriceTag price={product.price} compareAt={product.compareAtPrice} className="text-2xl font-extrabold" showSavings /></div>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1"><ShippingBadge /><PriceMatchBadge /></div>
             {product.description && <p className="mt-3 text-sm" style={{ color: alpha(p.text, 0.65) }}>{product.description}</p>}
             <div className="mt-6">
@@ -1803,6 +1856,7 @@ function ProductModal({ product, brand, onClose, onAddToCart, insights, isWishli
               <SpecRow label="Matière" value={product.material} />
               <SpecRow label="Catégorie" value={product.category} />
               <SpecRow label="Disponibilité" value={product.stock} />
+              {product.ean && <SpecRow label="Code EAN" value={product.ean} />}
             </div>
             <div className="mt-6 flex items-center gap-4">
               <div className="flex items-center rounded-full overflow-hidden" style={{ border: `1px solid ${p.borderStrong}` }}>
@@ -2379,7 +2433,8 @@ function CheckoutWizard({ open, onClose, cart, products, session, profile, onPro
   const [payError, setPayError] = useState("");
 
   const [promoInput, setPromoInput] = useState("");
-  const [promo, setPromo] = useState(null); // { code, discountPercent }
+  const [promo, setPromo] = useState(null); // { code, discountPercent, expiresAt }
+  const promoCountdown = useCountdown(promo?.expiresAt);
   const [promoError, setPromoError] = useState("");
   const [promoChecking, setPromoChecking] = useState(false);
 
@@ -2419,7 +2474,7 @@ function CheckoutWizard({ open, onClose, cart, products, session, profile, onPro
     try {
       const result = await validatePromoCode(promoInput);
       if (!result.valid) { setPromoError(result.reason); setPromo(null); return; }
-      setPromo({ code: result.promo.code, discountPercent: result.promo.discountPercent });
+      setPromo({ code: result.promo.code, discountPercent: result.promo.discountPercent, expiresAt: result.promo.expiresAt });
       setPromoInput("");
     } catch (err) {
       setPromoError(err.message || "Échec de la vérification du code.");
@@ -2545,9 +2600,16 @@ function CheckoutWizard({ open, onClose, cart, products, session, profile, onPro
 
             <div className="mb-4">
               {promo ? (
-                <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: alpha(NEON.lime, 0.12) }}>
-                  <span className="text-sm font-semibold" style={{ color: p.text }}>Code <strong>{promo.code}</strong> appliqué (-{promo.discountPercent}%)</span>
-                  <button onClick={() => setPromo(null)} className="text-xs font-medium" style={{ color: NEG }}>Retirer</button>
+                <div className="p-3 rounded-xl" style={{ background: alpha(NEON.lime, 0.12) }}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold" style={{ color: p.text }}>Code <strong>{promo.code}</strong> appliqué (-{promo.discountPercent}%)</span>
+                    <button onClick={() => setPromo(null)} className="text-xs font-medium" style={{ color: NEG }}>Retirer</button>
+                  </div>
+                  {promoCountdown && (
+                    <p className="text-xs mt-1.5 font-medium" style={{ color: promoCountdown === "Expiré" ? NEG : NEON.orange }}>
+                      {promoCountdown === "Expiré" ? "Ce code a expiré." : `Expire dans ${promoCountdown}`}
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="flex gap-2">
@@ -2773,7 +2835,7 @@ function AdminDashboard({ products, orders, brands }) {
 
 function ProductFormModal({ open, onClose, onSave, brands, suppliers, initial }) {
   const { p } = useTheme();
-  const empty = { name: "", brandId: brands[0]?.id || "", category: "Solaire", gender: "Mixte", price: "", cost: "", compareAtPrice: null, colorName: "", colorHex: NEON.cyan, shape: "square", calibre: "", material: "", stock: "En stock", supplierId: suppliers[0]?.id || "", featured: false, description: "", photos: [] };
+  const empty = { name: "", brandId: brands[0]?.id || "", category: "Solaire", gender: "Mixte", price: "", cost: "", compareAtPrice: null, colorName: "", colorHex: NEON.cyan, shape: "square", calibre: "", material: "", stock: "En stock", supplierId: suppliers[0]?.id || "", featured: false, description: "", photos: [], ean: "" };
   const [form, setForm] = useState(initial || empty);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
@@ -2839,6 +2901,7 @@ function ProductFormModal({ open, onClose, onSave, brands, suppliers, initial })
           <Field label="Coloris (nom)"><input className={inputCls} style={inputStyle} value={form.colorName} onChange={(e) => set("colorName", e.target.value)} /></Field>
           <Field label="Coloris (teinte)"><input type="color" className="w-full h-10 rounded-lg" style={inputStyle} value={form.colorHex} onChange={(e) => set("colorHex", e.target.value)} /></Field>
           <Field label="Calibre (ex: 52-18-140)"><input className={inputCls} style={inputStyle} value={form.calibre} onChange={(e) => set("calibre", e.target.value)} /></Field>
+          <Field label="Code EAN (optionnel)"><input className={inputCls} style={inputStyle} value={form.ean} onChange={(e) => set("ean", e.target.value)} placeholder="Ex: 8056597123456" /></Field>
           <Field label="Matière"><input className={inputCls} style={inputStyle} value={form.material} onChange={(e) => set("material", e.target.value)} /></Field>
           <Field label="Forme de monture"><select className={inputCls} style={inputStyle} value={form.shape} onChange={(e) => set("shape", e.target.value)}><option value="square">Carrée</option><option value="round">Ronde</option></select></Field>
           <Field label="Statut stock"><select className={inputCls} style={inputStyle} value={form.stock} onChange={(e) => set("stock", e.target.value)}><option>En stock</option><option>Sur commande</option><option>Rupture</option></select></Field>
@@ -2936,6 +2999,7 @@ const IMPORT_FIELD_DEFS = [
   { id: "colorName", label: "Coloris", aliases: ["coloris", "couleur", "color"], required: false },
   { id: "colorHex", label: "Teinte (hex)", aliases: ["teinte", "hex", "couleur hex", "colorhex"], required: false },
   { id: "calibre", label: "Calibre", aliases: ["calibre", "taille"], required: false },
+  { id: "ean", label: "Code EAN (optionnel)", aliases: ["ean", "ean13", "code ean", "code-barre", "code barre", "gtin", "upc"], required: false },
   { id: "material", label: "Matière", aliases: ["matiere", "matière", "material"], required: false },
   { id: "shape", label: "Forme", aliases: ["forme", "shape"], required: false },
   { id: "stock", label: "Stock", aliases: ["stock", "disponibilite", "disponibilité", "statut"], required: false },
@@ -3044,7 +3108,7 @@ function buildImportRawRow(row, mapping, rowIndex) {
     compareAtPrice,
     cost,
     colorName: get("colorName") || "Standard",
-    colorHex, calibre: get("calibre"), material: get("material"), shape, stock,
+    colorHex, calibre: get("calibre"), ean: get("ean"), material: get("material"), shape, stock,
     supplierNameRaw,
     photos: ["photo1", "photo2", "photo3", "photo4", "photo5"]
       .map((f) => get(f))
@@ -3192,7 +3256,7 @@ function ImportWizard({ open, onClose, brands, suppliers, onImport }) {
       id: newId("p"),
       name: r.name, brandId: r.brandId, category: r.category, gender: r.gender,
       price: r.price, compareAtPrice: r.compareAtPrice, cost: r.cost, colorName: r.colorName, colorHex: r.colorHex,
-      shape: r.shape, calibre: r.calibre, material: r.material, stock: r.stock,
+      shape: r.shape, calibre: r.calibre, ean: r.ean, material: r.material, stock: r.stock,
       supplierId: r.supplierId, featured: false, description: r.description, photos: r.photos,
     }));
     setImportPending(true); setImportError("");
@@ -4040,6 +4104,14 @@ function Root() {
     });
     const ranked = Object.entries(salesByProduct).filter(([, qty]) => qty > 0).sort((a, b) => b[1] - a[1]);
     const bestSellerIds = new Set(ranked.slice(0, 4).map(([id]) => id));
+
+    // "Recommandé" = genuinely best real discount (never hand-picked) — only products with a real
+    // compare-at price set in the admin are eligible, so it can't be gamed by an arbitrary badge.
+    const discounted = products
+      .filter((p) => p.compareAtPrice && p.compareAtPrice > p.price)
+      .sort((a, b) => (1 - b.price / b.compareAtPrice) - (1 - a.price / a.compareAtPrice));
+    const recommendedIds = new Set(discounted.slice(0, 3).map((p) => p.id));
+
     const now = Date.now();
     const map = {};
     products.forEach((p) => {
@@ -4047,7 +4119,7 @@ function Root() {
       const lowStock = p.stockQuantity !== null && p.stockQuantity !== undefined && p.stockQuantity > 0 && p.stockQuantity <= 3;
       const productReviews = reviews.filter((r) => r.productId === p.id);
       const avgRating = productReviews.length ? productReviews.reduce((s, r) => s + r.rating, 0) / productReviews.length : null;
-      map[p.id] = { isBestSeller: bestSellerIds.has(p.id), isNew, lowStock, stockQuantity: p.stockQuantity, unitsSold: salesByProduct[p.id] || 0, avgRating, reviewCount: productReviews.length };
+      map[p.id] = { isBestSeller: bestSellerIds.has(p.id), isRecommended: recommendedIds.has(p.id), isNew, lowStock, stockQuantity: p.stockQuantity, unitsSold: salesByProduct[p.id] || 0, avgRating, reviewCount: productReviews.length };
     });
     return map;
   }, [products, orders, reviews]);
