@@ -61,6 +61,7 @@ const rowToProduct = (r) => ({
   compareAtPrice: r.compare_at_price !== null && r.compare_at_price !== undefined ? Number(r.compare_at_price) : null,
   createdAt: r.created_at || null,
   stockQuantity: r.stock_quantity !== null && r.stock_quantity !== undefined ? Number(r.stock_quantity) : null,
+  ean: r.ean || "",
 });
 const productToRow = (p) => ({
   id: p.id, name: p.name, brand_id: p.brandId, category: p.category, gender: p.gender,
@@ -70,6 +71,7 @@ const productToRow = (p) => ({
   photo_urls: p.photos || [], photo_url: (p.photos && p.photos[0]) || "",
   compare_at_price: p.compareAtPrice || null,
   stock_quantity: p.stockQuantity === "" || p.stockQuantity === undefined ? null : p.stockQuantity,
+  ean: p.ean || null,
 });
 
 const rowToOrder = (r) => ({
