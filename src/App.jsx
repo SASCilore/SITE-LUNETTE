@@ -1005,8 +1005,8 @@ function Hero({ setPage, featured, brands, onOpenProduct }) {
         <span key={i} className="glint" style={{ top: g.t, left: g.l, width: g.s, height: g.s, background: `radial-gradient(circle, ${g.c}, transparent 70%)`, animationDelay: g.d }} />
       ))}
 
-      <div className="relative max-w-6xl mx-auto px-5 md:px-8 pt-20 pb-24 md:pt-28 md:pb-32 grid md:grid-cols-2 gap-14 items-center">
-        <div className="reveal visible">
+      <div className="relative max-w-6xl mx-auto px-5 md:px-8 pt-20 pb-24 md:pt-28 md:pb-32 grid grid-cols-1 md:grid-cols-2 gap-14 items-center">
+        <div className="reveal visible min-w-0">
           <Eyebrow>Lunettes de soleil & de vue — sélection multi-marques authentique</Eyebrow>
           <h1 ref={h1Ref} className="mtr-display font-extrabold leading-[0.94]" style={{ color: p.text, fontSize: "clamp(2.75rem, 7vw, 4.75rem)", willChange: "transform, opacity" }}>
             Lunettes de marque.<br />Prix imbattables.<br /><span className="chroma">En 24h.</span>
@@ -1031,14 +1031,18 @@ function Hero({ setPage, featured, brands, onOpenProduct }) {
             onMouseLeave={tilt.onMouseLeave}
             onClick={() => onOpenProduct && onOpenProduct(featured)}
             style={{ ...tilt.style, "--edge": NEON.cyan }}
-            className="neon-border relative rounded-3xl p-6 md:p-10 text-left w-full"
+            className="neon-border relative rounded-3xl p-6 md:p-10 text-left w-full min-w-0"
           >
             <div className="absolute inset-0 rounded-3xl" style={{ background: alpha(p.text, 0.03), backdropFilter: "blur(6px)", border: `1px solid ${p.border}` }} />
             <div className="relative w-full flex items-center justify-center" style={{ height: 260 }}>
               <img src={featured.photos[0]} alt={featured.name} className="max-w-full max-h-full object-contain" />
             </div>
-            <div className="relative mt-4 flex items-center justify-between gap-3 flex-wrap">
-              <span className="mtr-display font-bold text-base md:text-lg truncate" style={{ color: p.text }}>{featuredBrand?.name} — {featured.name}</span>
+            <div className="relative mt-4 flex items-center justify-between gap-3 flex-wrap min-w-0">
+              {/* min-w-0 here is the actual fix: a flex item with "truncate" (white-space: nowrap)
+                 refuses to shrink below its full untruncated text width by default, which was
+                 forcing this whole card — and the grid row it sits in — wider than the phone
+                 screen. That's what pushed every line of hero text off the right edge. */}
+              <span className="mtr-display font-bold text-base md:text-lg truncate min-w-0" style={{ color: p.text }}>{featuredBrand?.name} — {featured.name}</span>
               <span className="mtr-display font-bold text-base md:text-lg inline-flex items-center gap-1.5 shrink-0"><PriceTag price={featured.price} compareAt={featured.compareAtPrice} className="font-bold" color={NEON.cyan} /></span>
             </div>
             <div className="relative mt-1.5"><ShippingBadge /></div>
