@@ -3,6 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Certains navigateurs Android (Samsung Internet, Chrome avec "Thème sombre pour les sites")
+         appliquent d'office un assombrissement automatique à tout site qui ne déclare pas gérer
+         lui-même le mode sombre — même si le site est déjà en thème clair. C'est ce qui rendait le
+         site "sombre" sur Samsung alors qu'il restait clair sur iPhone (Safari n'a pas cette
+         fonctionnalité). Cette balise indique au navigateur que le site gère lui-même ses deux
+         thèmes, ce qui désactive cet assombrissement forcé. -->
+    <meta name="color-scheme" content="light dark" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Lunettes de marque pas cher | Livraison 24h – go2glass</title>
     <meta name="description" content="Ray-Ban, Oakley, Prada, Gucci et plus : lunettes de marque authentiques à prix imbattables, livrées en 24h partout en France. Garantie du meilleur prix." />
