@@ -10,8 +10,12 @@ html, body {
   /* Empêche tout défilement latéral accidentel (page qui "glisse" horizontalement au doigt sur
      mobile) : un élément qui déborde d'un pixel de trop (transform 3D, marquee, etc.) ne doit
      jamais rendre toute la page scrollable de gauche à droite. La navigation reste uniquement
-     verticale, comme prévu. */
-  overflow-x: hidden;
+     verticale, comme prévu.
+     IMPORTANT : "clip" et non "hidden" — "overflow-x: hidden" sur html/body transforme la page
+     entière en conteneur de scroll, ce qui casse "position: sticky" partout sur le site (c'est ce
+     qui a coupé l'animation du bandeau scroll ET celle de la lunette juste après le déploiement).
+     "clip" bloque le débordement horizontal sans créer ce conteneur, donc le sticky refonctionne. */
+  overflow-x: clip;
   max-width: 100%;
 }
 
