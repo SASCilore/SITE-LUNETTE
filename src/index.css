@@ -6,6 +6,15 @@ html, body, #root {
   height: 100%;
 }
 
+html, body {
+  /* Empêche tout défilement latéral accidentel (page qui "glisse" horizontalement au doigt sur
+     mobile) : un élément qui déborde d'un pixel de trop (transform 3D, marquee, etc.) ne doit
+     jamais rendre toute la page scrollable de gauche à droite. La navigation reste uniquement
+     verticale, comme prévu. */
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
 body {
   margin: 0;
 }
