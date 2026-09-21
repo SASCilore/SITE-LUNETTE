@@ -7,7 +7,7 @@ import Papa from "papaparse";
 // "motion" (successor to framer-motion, same API under `motion/react`) drives the scroll-linked
 // 3D gallery below the hero — real product photos, not the stock Unsplash images from the demo
 // this was adapted from.
-import { motion, useScroll, useTransform } from "motion/react";
+import { motion, useScroll, useTransform, useMotionValue } from "motion/react";
 // Note: "xlsx" is intentionally NOT statically imported here — it's a large library only ever
 // needed by the admin's Excel import, so it's loaded on demand (see handleFile below) instead of
 // shipping it to every visitor of the public site.
@@ -1086,8 +1086,26 @@ function ProductGalleryScroll({ products, setPage }) {
   const { p } = useTheme();
   const scrollRef = useRef(null);
   const { scrollYProgress } = useScroll({ target: scrollRef });
-  const rotateX = useTransform(scrollYProgress, [0, 0.5], [60, 0]);
-  const scale = useTransform(scrollYProgress, [0.5, 0.9], [1.15, 1]);
+  const rotateXDesktop = useTransform(scrollYProgress, [0, 0.5], [60, 0]);
+  const scaleDesktop = useTransform(scrollYProgress, [0.5, 0.9], [1.15, 1]);
+  // Valeurs fixes pour mobile (hooks appelés inconditionnellement, mais pas branchés sur le scroll)
+  const rotateXFixed = useMotionValue(0);
+  const scaleFixed = useMotionValue(1);
+
+  // C'est ce premier défilement (perspective 3D + rotation de toute la grille recalculée à
+  // chaque frame, sur 12 photos) qui était signalé comme saccadé sur mobile : la 3D composée est
+  // lourde pour le GPU des téléphones. Sur mobile on retire la perspective/rotation et on garde
+  // seulement le léger parallax vertical des colonnes (un simple translateY, bien moins coûteux) ;
+  // desktop conserve l'effet complet.
+  const [isDesktop, setIsDesktop] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const onChange = () => setIsDesktop(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  const rotateX = isDesktop ? rotateXDesktop : rotateXFixed;
+  const scale = isDesktop ? scaleDesktop : scaleFixed;
 
   // Three columns of real product photos (photo #1 of eligible products), picked once per mount
   // so it stays fixed while scrolling and changes again on the next visit/refresh.
@@ -1112,11 +1130,11 @@ function ProductGalleryScroll({ products, setPage }) {
           Voir tout le catalogue <ArrowRight size={14} />
         </button>
       </div>
-      <div ref={scrollRef} className="relative h-[220svh]" style={{ perspective: "1000px", perspectiveOrigin: "center top" }}>
-        <div className="sticky left-0 top-0 h-svh w-full overflow-hidden" style={{ perspective: "1000px", transformStyle: "preserve-3d" }}>
+      <div ref={scrollRef} className="relative h-[220svh]" style={isDesktop ? { perspective: "1000px", perspectiveOrigin: "center top" } : undefined}>
+        <div className="sticky left-0 top-0 h-svh w-full overflow-hidden" style={isDesktop ? { perspective: "1000px", transformStyle: "preserve-3d" } : undefined}>
           <motion.div
             className="relative grid size-full grid-cols-3 gap-3 md:gap-4 max-w-5xl mx-auto px-4"
-            style={{ rotateX, scale, transformStyle: "preserve-3d" }}
+            style={isDesktop ? { rotateX, scale, transformStyle: "preserve-3d" } : { willChange: "transform" }}
           >
             <GalleryCol photos={col1} yFrom="-10%" yTo="2%" scrollYProgress={scrollYProgress} offsetClass="-mt-6 md:-mt-10" />
             <GalleryCol photos={col2} yFrom="15%" yTo="5%" scrollYProgress={scrollYProgress} offsetClass="mt-6 md:mt-10" />
