@@ -52,6 +52,12 @@ function useTheme() {
 function ThemeProvider({ children }) {
   const [dark, setDark] = useState(false);
   const p = getPalette(dark);
+  // Garde la déclaration "color-scheme" du navigateur alignée sur le thème réellement affiché
+  // (voir la balise <meta name="color-scheme"> dans index.html) — sinon certains navigateurs
+  // Android continuent d'assombrir la page eux-mêmes même quand le site est en thème clair.
+  useEffect(() => {
+    document.documentElement.style.colorScheme = dark ? "dark" : "light";
+  }, [dark]);
   return <ThemeCtx.Provider value={{ dark, p, toggle: () => setDark((d) => !d) }}>{children}</ThemeCtx.Provider>;
 }
 
