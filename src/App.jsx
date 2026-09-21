@@ -186,10 +186,12 @@ function smoothstep(edge0, edge1, x) {
 // Returns 0->1 progress of how far the viewport has scrolled through a tall section.
 function useScrollProgress(ref) {
   const [progress, setProgress] = useState(0);
-  const reduced = useRef(typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  // Demandé explicitement : cette animation reste active même si le visiteur a activé
+  // "Réduire les animations" sur son appareil, pour que l'effet joue pour tout le monde
+  // (comme la galerie scroll plus haut, qui n'en tient pas compte non plus).
   useEffect(() => {
     const el = ref.current;
-    if (!el || reduced.current) return;
+    if (!el) return;
     let raf = null;
     const compute = () => {
       const rect = el.getBoundingClientRect();
