@@ -62,6 +62,9 @@ const rowToProduct = (r) => ({
   createdAt: r.created_at || null,
   stockQuantity: r.stock_quantity !== null && r.stock_quantity !== undefined ? Number(r.stock_quantity) : null,
   ean: r.ean || "",
+  // Prix professionnel (HT, remisé) — visible uniquement dans l'espace pro, réservé aux comptes validés.
+  // null = ce produit n'est pas (encore) proposé au tarif pro.
+  proPrice: r.pro_price !== null && r.pro_price !== undefined ? Number(r.pro_price) : null,
 });
 const productToRow = (p) => ({
   id: p.id, name: p.name, brand_id: p.brandId, category: p.category, gender: p.gender,
@@ -72,6 +75,7 @@ const productToRow = (p) => ({
   compare_at_price: p.compareAtPrice || null,
   stock_quantity: p.stockQuantity === "" || p.stockQuantity === undefined ? null : p.stockQuantity,
   ean: p.ean || null,
+  pro_price: p.proPrice === "" || p.proPrice === undefined || p.proPrice === null ? null : p.proPrice,
 });
 
 const rowToOrder = (r) => ({
@@ -240,6 +244,14 @@ const rowToProfile = (r) => ({
   phone: r.phone || "", addressLine1: r.address_line1 || "", addressLine2: r.address_line2 || "",
   city: r.city || "", postalCode: r.postal_code || "", country: r.country || "France",
   loyaltyPoints: r.loyalty_points || 0,
+  // Compte professionnel (B2B) : none = jamais demandé, pending = en attente de validation manuelle,
+  // approved = accès au catalogue/tarifs pro, rejected = demande refusée (peut redemander).
+  proStatus: r.pro_status || "none",
+  companyName: r.company_name || "",
+  siret: r.siret || "",
+  proPhone: r.pro_phone || "",
+  proMessage: r.pro_message || "",
+  proRequestedAt: r.pro_requested_at || null,
 });
 
 export async function getProfile(userId) {
@@ -255,6 +267,38 @@ export async function upsertProfile(userId, profile) {
     city: profile.city, postal_code: profile.postalCode, country: profile.country,
   };
   const { data, error } = await supabase.from("profiles").upsert(row).select().single();
+  if (error) throw error;
+  return rowToProfile(data);
+}
+
+/* ---------------------------------- COMPTES PROFESSIONNELS (B2B) ---------------------------------- */
+
+// Soumet (ou re-soumet après un refus) une demande de compte pro. Ne touche jamais role/loyalty_points —
+// seul un admin peut faire passer pro_status à "approved" (voir setProAccountStatus, protégé par RLS).
+export async function requestProAccount(userId, { companyName, siret, proPhone, proMessage }) {
+  const row = {
+    id: userId,
+    company_name: companyName || null,
+    siret: siret || null,
+    pro_phone: proPhone || null,
+    pro_message: proMessage || null,
+    pro_status: "pending",
+    pro_requested_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase.from("profiles").upsert(row).select().single();
+  if (error) throw error;
+  return rowToProfile(data);
+}
+
+// Réservé à l'admin (RLS: seule la policy "Admin update any profile" autorise cet update sur autrui).
+export async function fetchProRequests() {
+  const { data, error } = await supabase.from("profiles").select("*").neq("pro_status", "none").order("pro_requested_at", { ascending: false });
+  if (error) throw error;
+  return (data || []).map(rowToProfile);
+}
+
+export async function setProAccountStatus(userId, status) {
+  const { data, error } = await supabase.from("profiles").update({ pro_status: status }).eq("id", userId).select().single();
   if (error) throw error;
   return rowToProfile(data);
 }
