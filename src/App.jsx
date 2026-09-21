@@ -1108,7 +1108,7 @@ function ProductGalleryScroll({ products, setPage }) {
           Voir tout le catalogue <ArrowRight size={14} />
         </button>
       </div>
-      <div ref={scrollRef} className="relative h-[220vh]" style={{ perspective: "1000px", perspectiveOrigin: "center top" }}>
+      <div ref={scrollRef} className="relative h-[220svh]" style={{ perspective: "1000px", perspectiveOrigin: "center top" }}>
         <div className="sticky left-0 top-0 h-svh w-full overflow-hidden" style={{ perspective: "1000px", transformStyle: "preserve-3d" }}>
           <motion.div
             className="relative grid size-full grid-cols-3 gap-3 md:gap-4 max-w-5xl mx-auto px-4"
@@ -1154,8 +1154,12 @@ function ScrollGlassesStory({ featured }) {
   );
 
   return (
-    <section ref={sectionRef} style={{ height: "320vh", position: "relative", background: p.bg }}>
-      <div style={{ position: "sticky", top: 0, height: "100vh", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <section ref={sectionRef} style={{ height: "320svh", position: "relative", background: p.bg }}>
+      {/* "svh" (small viewport height) instead of "vh" — on mobile Safari/Chrome, "100vh" includes
+         the space the address bar takes up when it's collapsed, so the pinned box's real height
+         keeps jumping as the bar shows/hides while scrolling, opening up the gaps of blank space
+         seen on phones. "svh" is the stable, always-visible height, so the pin no longer jumps. */}
+      <div style={{ position: "sticky", top: 0, height: "100svh", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div className="mesh-bg">
           <div className="mesh-blob" style={{ width: 480, height: 480, top: "20%", left: "-15%", background: NEON.cyan, opacity: 0.1 + glow * 0.1 }} />
           <div className="mesh-blob" style={{ width: 420, height: 420, bottom: "10%", right: "-10%", background: NEON.pink, opacity: 0.08 + glow * 0.1, animationDelay: "-9s" }} />
@@ -1286,8 +1290,21 @@ function LensRevealBrands({ brands, setPage }) {
     return () => ro.disconnect();
   }, []);
 
+  // The traveling-glasses mask-reveal below is desktop-only: it recomputes a CSS mask every
+  // animation frame, which is heavy on older/weaker phones (reported lag on this exact banner),
+  // and on some mobile WebKit versions a live-updated mask can fail to paint at all (reported as
+  // "the text doesn't show"). Mobile keeps the plain, always-visible, static brand list instead —
+  // same text, zero per-frame cost, guaranteed to render.
+  const [isDesktop, setIsDesktop] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches);
   useEffect(() => {
-    if (!visible) return;
+    const mq = window.matchMedia("(min-width: 768px)");
+    const onChange = () => setIsDesktop(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    if (!visible || !isDesktop) return;
     let raf;
     const duration = 5200;
     const start = performance.now();
@@ -1317,7 +1334,7 @@ function LensRevealBrands({ brands, setPage }) {
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [visible, containerWidth]);
+  }, [visible, containerWidth, isDesktop]);
 
   return (
     <section style={{ background: p.bg2 }}>
@@ -1329,7 +1346,7 @@ function LensRevealBrands({ brands, setPage }) {
               <span key={b.id} onClick={() => setPage("catalogue")} className="cursor-pointer" style={{ color: alpha(p.text, 0.26) }}>{b.name}</span>
             ))}
           </div>
-          {visible && (
+          {visible && isDesktop && (
             <>
               <div ref={maskElRef} className="lens-row lens-row-masked pointer-events-none">
                 {displayBrands.map((b) => <span key={b.id}>{b.name}</span>)}
