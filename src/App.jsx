@@ -4,6 +4,10 @@ import React, { useState, useMemo, useRef, useEffect, useContext, createContext 
 // rare case), so it's loaded on demand inside Glasses3D's effect instead of shipping it to every
 // visitor's initial page load.
 import Papa from "papaparse";
+// "motion" (successor to framer-motion, same API under `motion/react`) drives the scroll-linked
+// 3D gallery below the hero — real product photos, not the stock Unsplash images from the demo
+// this was adapted from.
+import { motion, useScroll, useTransform } from "motion/react";
 // Note: "xlsx" is intentionally NOT statically imported here — it's a large library only ever
 // needed by the admin's Excel import, so it's loaded on demand (see handleFile below) instead of
 // shipping it to every visitor of the public site.
@@ -1047,6 +1051,72 @@ function Hero({ setPage, featured, brands, onOpenProduct }) {
             </div>
           </div>
         )}
+      </div>
+    </section>
+  );
+}
+
+/* ---------------------------------- PUBLIC: SCROLL GALLERY (3D parallax columns) ---------------------------------- */
+// Adapted from a 21st.dev community component ("animated-gallery"): same scroll-linked 3D
+// perspective + per-column parallax mechanic, rebuilt without Next.js/shadcn/Radix (this project
+// is plain Vite + React) and filled with real product photos instead of the demo's stock
+// Unsplash images — a random sample, changes on refresh, exactly like the brand strip below it.
+
+function GalleryCol({ photos, yFrom, yTo, scrollYProgress, offsetClass = "" }) {
+  const { p } = useTheme();
+  const y = useTransform(scrollYProgress, [0.5, 1], [yFrom, yTo]);
+  return (
+    <motion.div className={`relative flex w-full flex-col gap-3 ${offsetClass}`} style={{ y }}>
+      {photos.map((photo, i) => (
+        <div key={i} className="aspect-square w-full rounded-2xl p-4 flex items-center justify-center" style={{ background: p.bg3, border: `1px solid ${p.border}` }}>
+          <img src={photo} alt="" className="max-w-full max-h-full object-contain" loading="lazy" />
+        </div>
+      ))}
+    </motion.div>
+  );
+}
+
+function ProductGalleryScroll({ products, setPage }) {
+  const { p } = useTheme();
+  const scrollRef = useRef(null);
+  const { scrollYProgress } = useScroll({ target: scrollRef });
+  const rotateX = useTransform(scrollYProgress, [0, 0.5], [60, 0]);
+  const scale = useTransform(scrollYProgress, [0.5, 0.9], [1.15, 1]);
+
+  // Three columns of real product photos (photo #1 of eligible products), picked once per mount
+  // so it stays fixed while scrolling and changes again on the next visit/refresh.
+  const columnsRef = useRef(null);
+  if (columnsRef.current === null) {
+    const eligible = products.filter((pr) => pr.photos?.[0]);
+    const shuffled = [...eligible].sort(() => Math.random() - 0.5);
+    const pick = shuffled.slice(0, 12).map((pr) => pr.photos[0]);
+    while (pick.length > 0 && pick.length < 12) pick.push(pick[pick.length % Math.max(1, shuffled.length)]);
+    columnsRef.current = [pick.slice(0, 4), pick.slice(4, 8), pick.slice(8, 12)];
+  }
+  const [col1, col2, col3] = columnsRef.current;
+
+  if (col1.length === 0) return null; // no product photos yet (empty catalog) — nothing to show
+
+  return (
+    <section className="relative" style={{ background: p.bg }}>
+      <div className="max-w-6xl mx-auto px-5 md:px-8 pt-16 pb-6 text-center relative z-10">
+        <Eyebrow color={NEON.pink}>Le catalogue en un regard</Eyebrow>
+        <h2 className="mtr-display text-3xl md:text-4xl font-bold" style={{ color: p.text }}>Toutes les montures, un seul geste : scroller</h2>
+        <button onClick={() => setPage("catalogue")} className="mt-4 text-sm font-semibold inline-flex items-center gap-1.5" style={{ color: PRIMARY }}>
+          Voir tout le catalogue <ArrowRight size={14} />
+        </button>
+      </div>
+      <div ref={scrollRef} className="relative h-[220vh]" style={{ perspective: "1000px", perspectiveOrigin: "center top" }}>
+        <div className="sticky left-0 top-0 h-svh w-full overflow-hidden" style={{ perspective: "1000px", transformStyle: "preserve-3d" }}>
+          <motion.div
+            className="relative grid size-full grid-cols-3 gap-3 md:gap-4 max-w-5xl mx-auto px-4"
+            style={{ rotateX, scale, transformStyle: "preserve-3d" }}
+          >
+            <GalleryCol photos={col1} yFrom="-10%" yTo="2%" scrollYProgress={scrollYProgress} offsetClass="-mt-6 md:-mt-10" />
+            <GalleryCol photos={col2} yFrom="15%" yTo="5%" scrollYProgress={scrollYProgress} offsetClass="mt-6 md:mt-10" />
+            <GalleryCol photos={col3} yFrom="-10%" yTo="2%" scrollYProgress={scrollYProgress} offsetClass="-mt-6 md:-mt-10" />
+          </motion.div>
+        </div>
       </div>
     </section>
   );
@@ -4662,6 +4732,7 @@ function Root() {
         {page === "home" && (
           <>
             <Hero setPage={goPage} featured={featuredProduct} brands={brands} onOpenProduct={setActiveProduct} />
+            <ProductGalleryScroll products={products} setPage={goPage} />
             <CategoryStrip onGoCategory={goCategory} categoryProducts={categoryProducts} />
             <QuizBanner onOpen={() => setQuizOpen(true)} />
             <ScrollGlassesStory featured={featuredProduct} />
