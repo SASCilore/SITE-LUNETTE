@@ -1183,12 +1183,12 @@ function ScrollGlassesStory({ featured }) {
   const MobileStepCard = ({ n, title, text, opacity }) => (
     <div
       className="md:hidden"
-      style={{ position: "absolute", left: "50%", bottom: "5%", width: "88%", maxWidth: 360, transform: "translateX(-50%)", opacity, transition: "opacity .1s linear", pointerEvents: "none" }}
+      style={{ position: "absolute", left: "50%", bottom: "3%", width: "92%", maxWidth: 420, transform: "translateX(-50%)", opacity, transition: "opacity .1s linear", pointerEvents: "none" }}
     >
-      <div className="rounded-2xl px-4 py-3 text-center" style={{ background: alpha(p.bg, 0.9), border: `1px solid ${p.border}` }}>
-        <div className="mtr-mono text-[10px] font-bold mb-1 tracking-wider" style={{ color: NEON.cyan }}>0{n}</div>
-        <h3 className="mtr-display font-extrabold mb-1 leading-tight" style={{ color: p.text, fontSize: "1.05rem" }}>{title}</h3>
-        <p className="font-medium text-xs" style={{ color: alpha(p.text, 0.8) }}>{text}</p>
+      <div className="rounded-2xl px-5 py-5 text-center" style={{ background: alpha(p.bg, 0.94), border: `1px solid ${p.border}` }}>
+        <div className="mtr-mono text-xs font-bold mb-2 tracking-wider" style={{ color: NEON.cyan }}>0{n}</div>
+        <h3 className="mtr-display font-extrabold mb-2 leading-tight" style={{ color: p.text, fontSize: "1.6rem" }}>{title}</h3>
+        <p className="font-medium text-base" style={{ color: alpha(p.text, 0.85) }}>{text}</p>
       </div>
     </div>
   );
