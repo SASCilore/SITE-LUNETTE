@@ -1175,6 +1175,24 @@ function ScrollGlassesStory({ featured }) {
     </div>
   );
 
+  // Sur mobile, le texte des 3 étapes était masqué (`hidden md:block` ci-dessus) — il ne restait
+  // que la monture flottante et un grand vide, d'où le "bandeau sans texte" remonté. Les cartes
+  // desktop sont positionnées en % à gauche/droite pour un grand écran ; sur mobile on affiche à
+  // la place ces mêmes textes dans une seule carte compacte, centrée en bas, avec un fond plein
+  // pour rester lisible par-dessus l'image des lunettes.
+  const MobileStepCard = ({ n, title, text, opacity }) => (
+    <div
+      className="md:hidden"
+      style={{ position: "absolute", left: "50%", bottom: "5%", width: "88%", maxWidth: 360, transform: "translateX(-50%)", opacity, transition: "opacity .1s linear", pointerEvents: "none" }}
+    >
+      <div className="rounded-2xl px-4 py-3 text-center" style={{ background: alpha(p.bg, 0.9), border: `1px solid ${p.border}` }}>
+        <div className="mtr-mono text-[10px] font-bold mb-1 tracking-wider" style={{ color: NEON.cyan }}>0{n}</div>
+        <h3 className="mtr-display font-extrabold mb-1 leading-tight" style={{ color: p.text, fontSize: "1.05rem" }}>{title}</h3>
+        <p className="font-medium text-xs" style={{ color: alpha(p.text, 0.8) }}>{text}</p>
+      </div>
+    </div>
+  );
+
   return (
     <section ref={sectionRef} style={{ height: "320svh", position: "relative", background: p.bg }}>
       {/* "svh" (small viewport height) instead of "vh" — on mobile Safari/Chrome, "100vh" includes
@@ -1190,6 +1208,10 @@ function ScrollGlassesStory({ featured }) {
         <StepCard n={1} title="Repérez la monture" text="Parcourez une sélection resserrée des plus grandes maisons, sans bruit ni contrefaçon." style={{ left: "3%", top: "16%" }} opacity={s1} />
         <StepCard n={2} title="Regardez à travers" text="Chaque référence est vérifiée, chaque provenance tracée jusqu'au fournisseur agréé." style={{ right: "3%", top: "14%" }} opacity={s2} />
         <StepCard n={3} title="Elle arrive chez vous" text="Expédiée directement par nos partenaires, suivie de bout en bout jusqu'à votre porte." style={{ left: "50%", bottom: "4%", transform: `translate(-50%, ${(1 - s3) * 18}px)` }} opacity={s3} />
+
+        <MobileStepCard n={1} title="Repérez la monture" text="Une sélection resserrée des plus grandes maisons, sans bruit ni contrefaçon." opacity={s1} />
+        <MobileStepCard n={2} title="Regardez à travers" text="Chaque référence est vérifiée jusqu'au fournisseur agréé." opacity={s2} />
+        <MobileStepCard n={3} title="Elle arrive chez vous" text="Expédiée et suivie de bout en bout jusqu'à votre porte." opacity={s3} />
 
         {featured ? (
           <div
