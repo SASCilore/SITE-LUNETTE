@@ -12,7 +12,7 @@ import {
   LayoutDashboard, Package, Tags, Truck, ClipboardList, LogOut,
   Trash2, Pencil, Check, ArrowRight, Menu, Filter, ArrowLeft, Building2, Sparkles, Sun, Moon,
   Upload, FileSpreadsheet, Download, AlertTriangle, CheckCircle2, XCircle, Image as ImageIcon, Loader2,
-  User, MapPin, CreditCard, LogIn, UserPlus, Heart, Star, Scale,
+  User, MapPin, CreditCard, LogIn, UserPlus, Heart, Star, Scale, Briefcase, Clock, ShieldCheck,
 } from "lucide-react";
 import {
   fetchAllData, dbCreateBrand, dbCreateBrands, dbUpdateBrand, dbDeleteBrand,
@@ -24,6 +24,7 @@ import {
   fetchWishlist, addToWishlist, removeFromWishlist,
   fetchReviews, fetchAllReviews, upsertReview,
   validatePromoCode, fetchPromoCodes, createPromoCode, setPromoCodeActive, deletePromoCode,
+  requestProAccount, fetchProRequests, setProAccountStatus,
 } from "./lib/supabase.js";
 
 /* ---------------------------------- THEME ---------------------------------- */
@@ -857,7 +858,7 @@ function AnnounceBar() {
   );
 }
 
-function SiteHeader({ page, setPage, onGoCategory, cartCount, onOpenCart, onGoAdmin, mobileOpen, setMobileOpen, session, loyaltyPoints, wishlistCount, onOpenWishlist, onOpenAccount, onOpenSearch }) {
+function SiteHeader({ page, setPage, onGoCategory, cartCount, onOpenCart, onGoAdmin, mobileOpen, setMobileOpen, session, loyaltyPoints, wishlistCount, onOpenWishlist, onOpenAccount, onOpenSearch, proStatus }) {
   const { p } = useTheme();
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
@@ -897,6 +898,10 @@ function SiteHeader({ page, setPage, onGoCategory, cartCount, onOpenCart, onGoAd
           {categories.map((c) => <CategoryLink key={c.label} category={c.category} gender={c.gender}>{c.label}</CategoryLink>)}
           <NavLink target="marques">Marques</NavLink>
           <NavLink target="apropos">À propos</NavLink>
+          <NavLink target="pro">
+            Professionnels
+            {proStatus === "approved" && <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full align-middle" style={{ background: NEON.lime, boxShadow: `0 0 6px ${NEON.lime}` }} />}
+          </NavLink>
         </nav>
         <div className="flex items-center gap-3 shrink-0">
           <button onClick={onOpenSearch} className="hidden lg:flex items-center gap-2 px-3 py-2 rounded-full text-xs" style={{ background: alpha(p.text, 0.06), color: p.steel }} aria-label="Recherche instantanée">
@@ -908,7 +913,7 @@ function SiteHeader({ page, setPage, onGoCategory, cartCount, onOpenCart, onGoAd
               <Sparkles size={12} /> {loyaltyPoints} pts
             </span>
           )}
-          <button onClick={onGoAdmin} className="hidden lg:block text-xs mtr-mono uppercase tracking-wide" style={{ color: alpha(p.text, 0.4) }}>Espace pro</button>
+          <button onClick={onGoAdmin} className="hidden lg:block text-xs mtr-mono uppercase tracking-wide" style={{ color: alpha(p.text, 0.4) }}>Administration</button>
           <button onClick={onOpenAccount} className="btn-magnet p-2.5 rounded-full" style={{ color: p.text, background: alpha(p.text, 0.06) }} aria-label="Mon compte">
             <User size={19} />
           </button>
@@ -935,7 +940,8 @@ function SiteHeader({ page, setPage, onGoCategory, cartCount, onOpenCart, onGoAd
           </div>
           <NavLink target="marques">Marques</NavLink>
           <NavLink target="apropos">À propos</NavLink>
-          <button onClick={() => { onGoAdmin(); setMobileOpen(false); }} className="text-xs mtr-mono uppercase tracking-wide text-left" style={{ color: alpha(p.text, 0.4) }}>Espace pro</button>
+          <NavLink target="pro">Professionnels{proStatus === "approved" ? " ✓" : ""}</NavLink>
+          <button onClick={() => { onGoAdmin(); setMobileOpen(false); }} className="text-xs mtr-mono uppercase tracking-wide text-left" style={{ color: alpha(p.text, 0.4) }}>Administration</button>
           <ThemeToggle />
         </div>
       )}
@@ -1457,8 +1463,11 @@ function Footer({ setPage, onGoAdmin }) {
           </div>
         </div>
         <div>
-          <div className="mtr-mono text-xs uppercase tracking-wide mb-3" style={{ color: p.steel }}>Pro</div>
-          <button onClick={onGoAdmin} className="text-sm" style={{ color: alpha(p.text, 0.6) }}>Espace pro / Admin</button>
+          <div className="mtr-mono text-xs uppercase tracking-wide mb-3" style={{ color: p.steel }}>Professionnels</div>
+          <div className="flex flex-col gap-2 text-sm" style={{ color: alpha(p.text, 0.6) }}>
+            <button onClick={() => setPage("pro")} className="text-left w-fit">Espace pro (opticiens, revendeurs)</button>
+            <button onClick={onGoAdmin} className="text-left w-fit">Administration</button>
+          </div>
           <div className="mt-4"><ThemeToggle /></div>
         </div>
       </div>
@@ -1650,6 +1659,146 @@ function BrandsPage({ brands, products, setPage }) {
             );
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------- PUBLIC: ESPACE PRO (B2B) ---------------------------------- */
+
+function ProApplicationForm({ initial, submitting, error, onSubmit }) {
+  const { p } = useTheme();
+  const [form, setForm] = useState({ companyName: initial?.companyName || "", siret: initial?.siret || "", proPhone: initial?.proPhone || "", proMessage: initial?.proMessage || "" });
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const inputStyle = { border: `1px solid ${p.borderStrong}`, background: p.bg2, color: p.text };
+  const inputCls = "w-full px-3.5 py-2.5 rounded-lg text-sm outline-none";
+  return (
+    <div className="max-w-md mx-auto mt-8">
+      <div>
+        <label className="text-xs mtr-mono uppercase tracking-wide block mb-1.5" style={{ color: p.steel }}>Raison sociale</label>
+        <input className={inputCls} style={inputStyle} value={form.companyName} onChange={(e) => set("companyName", e.target.value)} placeholder="Ex: Optique du Centre SARL" />
+      </div>
+      <div className="mt-3">
+        <label className="text-xs mtr-mono uppercase tracking-wide block mb-1.5" style={{ color: p.steel }}>SIRET</label>
+        <input className={inputCls} style={inputStyle} value={form.siret} onChange={(e) => set("siret", e.target.value)} placeholder="14 chiffres" />
+      </div>
+      <div className="mt-3">
+        <label className="text-xs mtr-mono uppercase tracking-wide block mb-1.5" style={{ color: p.steel }}>Téléphone professionnel</label>
+        <input className={inputCls} style={inputStyle} value={form.proPhone} onChange={(e) => set("proPhone", e.target.value)} placeholder="06 12 34 56 78" />
+      </div>
+      <div className="mt-3">
+        <label className="text-xs mtr-mono uppercase tracking-wide block mb-1.5" style={{ color: p.steel }}>Votre activité (optionnel)</label>
+        <textarea rows={3} className={inputCls} style={inputStyle} value={form.proMessage} onChange={(e) => set("proMessage", e.target.value)} placeholder="Opticien, revendeur, e-commerçant… quelques volumes envisagés ?" />
+      </div>
+      {error && <p className="text-sm mt-3" style={{ color: NEG }}>{error}</p>}
+      <button
+        onClick={() => onSubmit(form)}
+        disabled={submitting || !form.companyName.trim() || !form.siret.trim()}
+        className="btn-magnet w-full mt-5 py-3 rounded-full font-semibold text-sm disabled:opacity-40"
+        style={{ background: p.text, color: p.bg }}
+      >
+        {submitting ? "Envoi…" : "Envoyer ma demande"}
+      </button>
+      <p className="text-xs mt-3 text-center" style={{ color: p.steel }}>Réservé aux professionnels (opticiens, revendeurs). Demande examinée manuellement, réponse sous 48h ouvrées.</p>
+    </div>
+  );
+}
+
+function ProPage({ session, profile, products, brands, onAddToCart, onRequestPro, onOpenAccount }) {
+  const { p } = useTheme();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (form) => {
+    setSubmitting(true); setError("");
+    try {
+      await onRequestPro(form);
+    } catch (err) {
+      setError(err.message || "Échec de l'envoi de la demande.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const status = profile?.proStatus || "none";
+  const proProducts = products.filter((pr) => pr.proPrice !== null && pr.proPrice !== undefined);
+
+  return (
+    <div style={{ background: p.bg, minHeight: "60vh", position: "relative", overflow: "hidden" }} className="py-12">
+      <SectionGlow />
+      <div className="relative max-w-3xl mx-auto px-5 md:px-8">
+        <Eyebrow color={NEON.blue}>Espace professionnel</Eyebrow>
+        <h1 className="mtr-display text-3xl md:text-4xl font-bold mb-4" style={{ color: p.text }}>Tarifs pro pour opticiens et revendeurs</h1>
+        <p className="text-base leading-relaxed mb-2" style={{ color: alpha(p.text, 0.65) }}>
+          Un accès dédié à un catalogue et des tarifs négociés, réservés aux professionnels — invisibles du grand public.
+          Chaque demande est examinée et validée manuellement par notre équipe avant activation.
+        </p>
+
+        {(!session || status === "none") && (
+          <>
+            {!session ? (
+              <div className="mt-8 p-6 rounded-2xl text-center" style={{ background: p.bg2, border: `1px solid ${p.border}` }}>
+                <p className="text-sm mb-4" style={{ color: p.text }}>Connectez-vous ou créez un compte pour déposer votre demande d'accès pro.</p>
+                <button onClick={onOpenAccount} className="btn-magnet px-6 py-3 rounded-full font-semibold text-sm" style={{ background: p.text, color: p.bg }}>Se connecter / Créer un compte</button>
+              </div>
+            ) : (
+              <ProApplicationForm submitting={submitting} error={error} onSubmit={submit} />
+            )}
+          </>
+        )}
+
+        {session && status === "pending" && (
+          <div className="mt-8 p-6 rounded-2xl flex items-start gap-3" style={{ background: alpha(NEON.yellow, 0.1), border: `1px solid ${alpha(NEON.yellow, 0.3)}` }}>
+            <Clock size={20} style={{ color: "#8a7d00", flexShrink: 0, marginTop: 2 }} />
+            <div>
+              <p className="text-sm font-semibold" style={{ color: p.text }}>Demande en cours d'examen</p>
+              <p className="text-sm mt-1" style={{ color: alpha(p.text, 0.6) }}>Nous validons votre compte pro sous 48h ouvrées. Vous recevrez l'accès au catalogue dès l'activation.</p>
+            </div>
+          </div>
+        )}
+
+        {session && status === "rejected" && (
+          <div className="mt-8">
+            <div className="p-5 rounded-2xl mb-6" style={{ background: alpha(NEG, 0.08), border: `1px solid ${alpha(NEG, 0.25)}` }}>
+              <p className="text-sm font-semibold" style={{ color: p.text }}>Votre précédente demande n'a pas été validée.</p>
+              <p className="text-sm mt-1" style={{ color: alpha(p.text, 0.6) }}>Vous pouvez déposer une nouvelle demande avec des informations à jour.</p>
+            </div>
+            <ProApplicationForm initial={profile} submitting={submitting} error={error} onSubmit={submit} />
+          </div>
+        )}
+
+        {session && status === "approved" && (
+          <div className="mt-8">
+            <div className="flex items-center gap-2 mb-6 text-sm font-semibold" style={{ color: NEON.lime }}>
+              <ShieldCheck size={16} /> Compte pro validé — {profile.companyName}
+            </div>
+            {proProducts.length === 0 ? (
+              <p className="text-sm" style={{ color: p.steel }}>Aucun produit n'est proposé au tarif pro pour le moment — revenez bientôt.</p>
+            ) : (
+              <div className="grid sm:grid-cols-2 gap-4">
+                {proProducts.map((pr) => {
+                  const brand = brands.find((b) => b.id === pr.brandId);
+                  return (
+                    <div key={pr.id} className="p-4 rounded-2xl flex gap-4" style={{ background: p.bg2, border: `1px solid ${p.border}` }}>
+                      <div className="w-20 h-16 rounded-lg overflow-hidden shrink-0 p-2" style={{ background: p.bg3 }}>
+                        <ProductVisual product={pr} stroke={alpha(p.text, 0.5)} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs mtr-mono uppercase" style={{ color: BRAND_ACCENT[pr.brandId] || PRIMARY }}>{brand?.name}</div>
+                        <div className="text-sm font-semibold truncate" style={{ color: p.text }}>{pr.name}</div>
+                        <div className="flex items-baseline gap-2 mt-1">
+                          <span className="text-base font-bold" style={{ color: NEON.lime }}>{euro(pr.proPrice)}</span>
+                          <span className="text-xs line-through" style={{ color: p.steel }}>{euro(pr.price)}</span>
+                        </div>
+                        <button onClick={() => onAddToCart(pr, 1, pr.proPrice)} className="btn-magnet mt-2 px-4 py-1.5 rounded-full text-xs font-semibold" style={{ background: p.text, color: p.bg }}>Ajouter au panier</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -2035,7 +2184,7 @@ function CartDrawer({ open, onClose, cart, products, brands, updateQty, removeIt
   const { p } = useTheme();
   if (!open) return null;
   const lines = cart.map((c) => ({ ...c, product: products.find((pr) => pr.id === c.productId) }));
-  const subtotal = lines.reduce((s, l) => s + (l.product?.price || 0) * l.qty, 0);
+  const subtotal = lines.reduce((s, l) => s + (l.unitPrice ?? l.product?.price ?? 0) * l.qty, 0);
 
   return (
     <div className="fixed inset-0 z-50">
@@ -2067,7 +2216,7 @@ function CartDrawer({ open, onClose, cart, products, brands, updateQty, removeIt
                         <span className="px-2 text-xs font-semibold" style={{ color: p.text }}>{l.qty}</span>
                         <button onClick={() => updateQty(l.productId, l.qty + 1)} className="tap-target p-1.5" style={{ color: p.text }}><Plus size={12} /></button>
                       </div>
-                      <span className="text-sm font-bold" style={{ color: p.text }}>{euro((l.product?.price || 0) * l.qty)}</span>
+                      <span className="text-sm font-bold" style={{ color: p.text }}>{euro((l.unitPrice ?? l.product?.price ?? 0) * l.qty)}</span>
                     </div>
                   </div>
                   <button onClick={() => removeItem(l.productId)} className="tap-target self-start p-1" style={{ color: p.steel }}><Trash2 size={14} /></button>
@@ -2462,7 +2611,7 @@ function CheckoutWizard({ open, onClose, cart, products, session, profile, onPro
   if (!open) return null;
 
   const lines = cart.map((c) => ({ ...c, product: products.find((pr) => pr.id === c.productId) }));
-  const subtotal = lines.reduce((s, l) => s + (l.product?.price || 0) * l.qty, 0);
+  const subtotal = lines.reduce((s, l) => s + (l.unitPrice ?? l.product?.price ?? 0) * l.qty, 0);
   const discountAmount = promo ? subtotal * (promo.discountPercent / 100) : 0;
   const total = subtotal - discountAmount;
   const inputStyle = { border: `1px solid ${p.borderStrong}`, background: p.bg3, color: p.text };
@@ -2633,7 +2782,7 @@ function CheckoutWizard({ open, onClose, cart, products, session, profile, onPro
               {lines.map((l) => (
                 <div key={l.productId} className="flex items-center justify-between text-sm">
                   <span style={{ color: p.text }}>{l.qty}× {l.product?.name}</span>
-                  <span style={{ color: p.steel }}>{euro((l.product?.price || 0) * l.qty)}</span>
+                  <span style={{ color: p.steel }}>{euro((l.unitPrice ?? l.product?.price ?? 0) * l.qty)}</span>
                 </div>
               ))}
               {promo && (
@@ -2717,11 +2866,12 @@ function AdminShell({ tab, setTab, onLogout, onBackToSite, children }) {
     { id: "suppliers", label: "Fournisseurs", icon: Truck },
     { id: "orders", label: "Commandes", icon: ClipboardList },
     { id: "promos", label: "Codes promo", icon: Sparkles },
+    { id: "pro", label: "Comptes pro", icon: Briefcase },
   ];
   return (
     <div className="min-h-screen flex flex-col md:flex-row" style={{ background: p.bg }}>
       <aside className="hidden md:flex md:flex-col w-64 shrink-0 p-6" style={{ background: p.sidebar }}>
-        <div className="flex items-center gap-2 mb-8"><Logo size={20} forceDark /><span className="mtr-display text-base font-bold" style={{ color: "#F3F5F6" }}>Pro</span></div>
+        <div className="flex items-center gap-2 mb-8"><Logo size={20} forceDark /><span className="mtr-display text-base font-bold" style={{ color: "#F3F5F6" }}>Admin</span></div>
         <nav className="flex-1 space-y-1">
           {items.map((it) => {
             const Icon = it.icon;
@@ -2835,7 +2985,7 @@ function AdminDashboard({ products, orders, brands }) {
 
 function ProductFormModal({ open, onClose, onSave, brands, suppliers, initial }) {
   const { p } = useTheme();
-  const empty = { name: "", brandId: brands[0]?.id || "", category: "Solaire", gender: "Mixte", price: "", cost: "", compareAtPrice: null, colorName: "", colorHex: NEON.cyan, shape: "square", calibre: "", material: "", stock: "En stock", supplierId: suppliers[0]?.id || "", featured: false, description: "", photos: [], ean: "" };
+  const empty = { name: "", brandId: brands[0]?.id || "", category: "Solaire", gender: "Mixte", price: "", cost: "", compareAtPrice: null, colorName: "", colorHex: NEON.cyan, shape: "square", calibre: "", material: "", stock: "En stock", supplierId: suppliers[0]?.id || "", featured: false, description: "", photos: [], ean: "", proPrice: null };
   const [form, setForm] = useState(initial || empty);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
@@ -2898,6 +3048,7 @@ function ProductFormModal({ open, onClose, onSave, brands, suppliers, initial })
           <Field label="Prix de vente (€)"><input type="number" className={inputCls} style={inputStyle} value={form.price} onChange={(e) => set("price", Number(e.target.value))} /></Field>
           <Field label="Prix barré (€, optionnel)"><input type="number" className={inputCls} style={inputStyle} value={form.compareAtPrice || ""} onChange={(e) => set("compareAtPrice", e.target.value ? Number(e.target.value) : null)} placeholder="Prix de référence réel avant remise" /></Field>
           <Field label="Coût fournisseur (€)"><input type="number" className={inputCls} style={inputStyle} value={form.cost} onChange={(e) => set("cost", Number(e.target.value))} /></Field>
+          <Field label="Prix pro HT (€, optionnel)"><input type="number" className={inputCls} style={inputStyle} value={form.proPrice || ""} onChange={(e) => set("proPrice", e.target.value ? Number(e.target.value) : null)} placeholder="Laisser vide = pas proposé aux pros" /></Field>
           <Field label="Coloris (nom)"><input className={inputCls} style={inputStyle} value={form.colorName} onChange={(e) => set("colorName", e.target.value)} /></Field>
           <Field label="Coloris (teinte)"><input type="color" className="w-full h-10 rounded-lg" style={inputStyle} value={form.colorHex} onChange={(e) => set("colorHex", e.target.value)} /></Field>
           <Field label="Calibre (ex: 52-18-140)"><input className={inputCls} style={inputStyle} value={form.calibre} onChange={(e) => set("calibre", e.target.value)} /></Field>
@@ -3936,6 +4087,130 @@ function AdminPromoCodes() {
   );
 }
 
+function AdminProRequests() {
+  const { p } = useTheme();
+  const [rows, setRows] = useState(null); // null = loading
+  const [error, setError] = useState("");
+  const [busyId, setBusyId] = useState(null);
+
+  useEffect(() => {
+    fetchProRequests().then(setRows).catch((err) => setError(err.message || "Échec du chargement."));
+  }, []);
+
+  const decide = async (userId, status) => {
+    setBusyId(userId); setError("");
+    const prev = rows;
+    setRows((rs) => rs.map((r) => (r.id === userId ? { ...r, proStatus: status } : r))); // optimistic
+    try {
+      await setProAccountStatus(userId, status);
+    } catch (err) {
+      setRows(prev);
+      setError(err.message || "Échec de la mise à jour.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const statusPill = (status) => {
+    const map = {
+      pending: { label: "En attente", color: NEON.yellow },
+      approved: { label: "Validé", color: NEON.lime },
+      rejected: { label: "Refusé", color: NEG },
+    };
+    const s = map[status] || { label: status, color: p.steel };
+    return <Pill style={{ background: alpha(s.color, 0.14), color: s.color }}>{s.label}</Pill>;
+  };
+
+  const pending = (rows || []).filter((r) => r.proStatus === "pending");
+  const decided = (rows || []).filter((r) => r.proStatus !== "pending");
+
+  return (
+    <div>
+      <AdminHeader title="Comptes pro" subtitle="Demandes d'accès au catalogue et aux tarifs professionnels — validation manuelle." />
+      {error && <p className="text-sm mb-4" style={{ color: NEG }}>{error}</p>}
+
+      {rows === null ? (
+        <p className="text-sm" style={{ color: p.steel }}>Chargement…</p>
+      ) : rows.length === 0 ? (
+        <p className="text-sm" style={{ color: p.steel }}>Aucune demande de compte pro pour le moment.</p>
+      ) : (
+        <div className="space-y-8">
+          {pending.length > 0 && (
+            <div>
+              <div className="mtr-mono text-xs uppercase tracking-wide mb-3" style={{ color: p.steel }}>À traiter ({pending.length})</div>
+              <div className="rounded-2xl overflow-hidden" style={{ background: p.bg2, border: `1px solid ${p.border}` }}>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left" style={{ background: p.bg3 }}>
+                      {["Société", "SIRET", "Contact", "Message", "Demandée le", ""].map((h) => (
+                        <th key={h} className="px-4 py-3 mtr-mono text-[11px] uppercase tracking-wide" style={{ color: p.steel }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pending.map((r) => (
+                      <tr key={r.id} className="border-t align-top" style={{ borderColor: p.border }}>
+                        <td className="px-4 py-3 font-semibold" style={{ color: p.text }}>{r.companyName || "—"}</td>
+                        <td className="px-4 py-3 mtr-mono" style={{ color: p.steel }}>{r.siret || "—"}</td>
+                        <td className="px-4 py-3" style={{ color: p.steel }}>
+                          <div>{r.email}</div>
+                          <div>{r.proPhone || "—"}</div>
+                        </td>
+                        <td className="px-4 py-3 max-w-xs" style={{ color: p.steel }}>{r.proMessage || "—"}</td>
+                        <td className="px-4 py-3" style={{ color: p.steel }}>{r.proRequestedAt ? new Date(r.proRequestedAt).toLocaleDateString("fr-FR") : "—"}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex gap-2">
+                            <button disabled={busyId === r.id} onClick={() => decide(r.id, "approved")} className="btn-magnet px-3 py-1.5 rounded-full text-xs font-semibold disabled:opacity-50" style={{ background: alpha(NEON.lime, 0.16), color: NEON.lime }}>Valider</button>
+                            <button disabled={busyId === r.id} onClick={() => decide(r.id, "rejected")} className="btn-magnet px-3 py-1.5 rounded-full text-xs font-semibold disabled:opacity-50" style={{ background: alpha(NEG, 0.12), color: NEG }}>Refuser</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {decided.length > 0 && (
+            <div>
+              <div className="mtr-mono text-xs uppercase tracking-wide mb-3" style={{ color: p.steel }}>Historique</div>
+              <div className="rounded-2xl overflow-hidden" style={{ background: p.bg2, border: `1px solid ${p.border}` }}>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left" style={{ background: p.bg3 }}>
+                      {["Société", "Contact", "Statut", ""].map((h) => (
+                        <th key={h} className="px-4 py-3 mtr-mono text-[11px] uppercase tracking-wide" style={{ color: p.steel }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {decided.map((r) => (
+                      <tr key={r.id} className="border-t" style={{ borderColor: p.border }}>
+                        <td className="px-4 py-3 font-semibold" style={{ color: p.text }}>{r.companyName || "—"}</td>
+                        <td className="px-4 py-3" style={{ color: p.steel }}>{r.email}</td>
+                        <td className="px-4 py-3">{statusPill(r.proStatus)}</td>
+                        <td className="px-4 py-3">
+                          {r.proStatus === "rejected" && (
+                            <button disabled={busyId === r.id} onClick={() => decide(r.id, "approved")} className="text-xs font-semibold underline" style={{ color: NEON.lime }}>Valider quand même</button>
+                          )}
+                          {r.proStatus === "approved" && (
+                            <button disabled={busyId === r.id} onClick={() => decide(r.id, "rejected")} className="text-xs font-semibold underline" style={{ color: NEG }}>Révoquer</button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminOrders({ orders, setOrders, products }) {
   const { p } = useTheme();
   const statuses = ["En attente", "Expédiée", "Livrée", "Annulée"];
@@ -3960,7 +4235,7 @@ function AdminOrders({ orders, setOrders, products }) {
       setError(err.message || "Échec de la suppression.");
     }
   };
-  const total = (o) => o.items.reduce((s, it) => s + (products.find((pr) => pr.id === it.productId)?.price || 0) * it.qty, 0);
+  const total = (o) => o.items.reduce((s, it) => s + (it.unitPrice ?? products.find((pr) => pr.id === it.productId)?.price ?? 0) * it.qty, 0);
   const statusColor = (s) => ({ "En attente": NEON.orange, "Expédiée": NEON.cyan, "Livrée": NEON.lime, "Annulée": NEG }[s] || p.steel);
 
   return (
@@ -4144,7 +4419,7 @@ function Root() {
   // Auth session (persists across reloads while the Supabase session is valid). Whenever the
   // session changes we also (re)fetch the profile — this is what distinguishes an admin account
   // from a customer account (see the "profiles.role" column), since both use the same Supabase
-  // Auth. Without this, any customer who creates an account could otherwise open /Espace pro.
+  // Auth. Without this, any customer who creates an account could otherwise open the administration.
   useEffect(() => {
     let cancelled = false;
     const syncProfile = async (s) => {
@@ -4192,11 +4467,13 @@ function Root() {
     }
   }, []);
 
-  const addToCart = (product, qty) => {
+  // unitPrice: only passed from the pro catalog (product.proPrice), to lock the negotiated pro
+  // price into the cart line — never guessed or discounted client-side for the public catalog.
+  const addToCart = (product, qty, unitPrice) => {
     setCart((c) => {
       const existing = c.find((i) => i.productId === product.id);
       if (existing) return c.map((i) => (i.productId === product.id ? { ...i, qty: i.qty + qty } : i));
-      return [...c, { productId: product.id, qty }];
+      return [...c, { productId: product.id, qty, ...(unitPrice != null ? { unitPrice } : {}) }];
     });
     setCartOpen(true);
   };
@@ -4246,12 +4523,17 @@ function Root() {
     setProfile(updated);
   };
 
+  const handleRequestPro = async (form) => {
+    const updated = await requestProAccount(session.user.id, form);
+    setProfile(updated);
+  };
+
   // Creates the order (status "pending" payment) then hands off to Stripe Checkout — the browser
   // navigates away entirely, so nothing after the redirect matters; payment confirmation comes
   // back later via the webhook (server-side) and the ?checkout=success redirect (client-side UX).
   const startCheckout = async (address, promo) => {
     const lines = cart.map((c) => ({ ...c, product: products.find((pr) => pr.id === c.productId) }));
-    const subtotal = lines.reduce((s, l) => s + (l.product?.price || 0) * l.qty, 0);
+    const subtotal = lines.reduce((s, l) => s + (l.unitPrice ?? l.product?.price ?? 0) * l.qty, 0);
     const discountPercent = promo?.discountPercent || 0;
     const total = subtotal * (1 - discountPercent / 100);
     const order = {
@@ -4259,7 +4541,7 @@ function Root() {
       client: address.fullName,
       email: session.user.email,
       date: new Date().toLocaleDateString("fr-FR"),
-      items: cart.map((c) => ({ productId: c.productId, qty: c.qty })),
+      items: cart.map((c) => ({ productId: c.productId, qty: c.qty, ...(c.unitPrice != null ? { unitPrice: c.unitPrice } : {}) })),
       status: "En attente",
       userId: session.user.id,
       shippingAddress: address,
@@ -4275,7 +4557,7 @@ function Root() {
     // the discounted total shown to the customer.
     const stripeItems = lines.map((l) => ({
       name: l.product?.name || "Produit",
-      price: (l.product?.price || 0) * (1 - discountPercent / 100),
+      price: (l.unitPrice ?? l.product?.price ?? 0) * (1 - discountPercent / 100),
       quantity: l.qty,
       image: l.product?.photos?.[0],
     }));
@@ -4286,8 +4568,8 @@ function Root() {
   // Base page title per section (overridden temporarily while a product modal is open — see
   // ProductModal's own title effect, which restores this value on close).
   useEffect(() => {
-    if (mode === "admin") { document.title = "Espace pro — go2glass"; return; }
-    const titles = { home: "go2glass — Lunettes de marque au meilleur prix", catalogue: "Catalogue — go2glass", marques: "Nos marques — go2glass", apropos: "À propos — go2glass" };
+    if (mode === "admin") { document.title = "Administration — go2glass"; return; }
+    const titles = { home: "go2glass — Lunettes de marque au meilleur prix", catalogue: "Catalogue — go2glass", marques: "Nos marques — go2glass", apropos: "À propos — go2glass", pro: "Espace professionnel — go2glass" };
     document.title = titles[page] || "go2glass";
   }, [page, mode]);
 
@@ -4336,7 +4618,7 @@ function Root() {
           <AdminLogin
             onLogin={handleLogin}
             onBackToSite={backToSite}
-            deniedNotice={session && profile && profile.role !== "admin" ? "Ce compte n'a pas les droits d'accès à l'espace pro." : ""}
+            deniedNotice={session && profile && profile.role !== "admin" ? "Ce compte n'a pas les droits d'accès à l'administration." : ""}
           />
         </div>
       );
@@ -4350,6 +4632,7 @@ function Root() {
           {adminTab === "suppliers" && <AdminSuppliers suppliers={suppliers} setSuppliers={setSuppliers} brands={brands} />}
           {adminTab === "orders" && <AdminOrders orders={orders} setOrders={setOrders} products={products} />}
           {adminTab === "promos" && <AdminPromoCodes />}
+          {adminTab === "pro" && <AdminProRequests />}
         </AdminShell>
       </div>
     );
@@ -4358,7 +4641,7 @@ function Root() {
   return (
     <div className="mtr grain" style={{ background: p.bg, minHeight: "100vh" }}>
       <AnnounceBar />
-      <SiteHeader page={page} setPage={goPage} onGoCategory={goCategory} cartCount={cartCount} onOpenCart={() => setCartOpen(true)} onGoAdmin={goAdmin} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} session={session} loyaltyPoints={profile?.loyaltyPoints || 0} wishlistCount={wishlistIds.length} onOpenWishlist={() => setWishlistOpen(true)} onOpenAccount={() => setAccountOpen(true)} onOpenSearch={() => setPaletteOpen(true)} />
+      <SiteHeader page={page} setPage={goPage} onGoCategory={goCategory} cartCount={cartCount} onOpenCart={() => setCartOpen(true)} onGoAdmin={goAdmin} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} session={session} loyaltyPoints={profile?.loyaltyPoints || 0} wishlistCount={wishlistIds.length} onOpenWishlist={() => setWishlistOpen(true)} onOpenAccount={() => setAccountOpen(true)} onOpenSearch={() => setPaletteOpen(true)} proStatus={profile?.proStatus} />
 
       {checkoutNotice && (
         <div className="relative z-30" style={{ background: checkoutNotice.type === "success" ? alpha(NEON.lime, 0.14) : alpha(NEON.yellow, 0.14) }}>
@@ -4440,6 +4723,7 @@ function Root() {
         {page === "catalogue" && <CatalogPage products={products} brands={brands} onOpen={setActiveProduct} initialFilter={catalogFilter} productInsights={productInsights} wishlistIds={wishlistIds} onToggleWishlist={toggleWishlist} />}
         {page === "marques" && <BrandsPage brands={brands} products={products} setPage={goPage} />}
         {page === "apropos" && <AboutPage setPage={goPage} />}
+        {page === "pro" && <ProPage session={session} profile={profile} products={products} brands={brands} onAddToCart={addToCart} onRequestPro={handleRequestPro} onOpenAccount={() => setAccountOpen(true)} />}
       </div>
 
       <Footer setPage={goPage} onGoAdmin={goAdmin} />
@@ -4464,7 +4748,7 @@ function Root() {
       <AccountDrawer open={accountOpen} onClose={() => setAccountOpen(false)} session={session} profile={profile} orders={orders} onSignIn={signIn} onSignUp={signUp} onSignOut={async () => { await signOut(); setAccountOpen(false); }} />
       <QuizWidget open={quizOpen} onClose={() => setQuizOpen(false)} products={products} brands={brands} onOpenProduct={setActiveProduct} onGoCategory={goCategory} />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} products={products} brands={brands} onOpenProduct={setActiveProduct} setPage={goPage} />
-      <FloatingCartWidget cartCount={cartCount} subtotal={cart.reduce((s, c) => s + (products.find((pr) => pr.id === c.productId)?.price || 0) * c.qty, 0)} onOpen={() => setCartOpen(true)} />
+      <FloatingCartWidget cartCount={cartCount} subtotal={cart.reduce((s, c) => s + (c.unitPrice ?? products.find((pr) => pr.id === c.productId)?.price ?? 0) * c.qty, 0)} onOpen={() => setCartOpen(true)} />
       <CompareBar compareIds={compareIds} products={products} onOpen={() => setCompareOpen(true)} onClear={() => setCompareIds([])} />
       <CompareModal open={compareOpen} onClose={() => setCompareOpen(false)} compareIds={compareIds} products={products} brands={brands} productInsights={productInsights} onRemove={toggleCompare} />
       <CheckoutWizard
