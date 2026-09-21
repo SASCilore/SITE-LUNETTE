@@ -805,7 +805,7 @@ function PriceTag({ price, compareAt, className = "font-bold", color, showSaving
 
 function ShippingBadge({ size = 11 }) {
   return (
-    <span className="mtr-mono inline-flex items-center gap-1 font-bold uppercase tracking-wide" style={{ fontSize: size, color: NEON.pink }}>
+    <span className="mtr-mono inline-flex items-center gap-1 font-bold uppercase tracking-wide rounded-full" style={{ fontSize: size, color: NEON.pink, background: alpha(NEON.pink, 0.14), padding: `${Math.max(3, size * 0.35)}px ${Math.max(7, size * 0.7)}px` }}>
       <Truck size={size + 2} /> Livraison incluse
     </span>
   );
@@ -813,7 +813,7 @@ function ShippingBadge({ size = 11 }) {
 
 function PriceMatchBadge({ size = 11 }) {
   return (
-    <span className="mtr-mono inline-flex items-center gap-1 font-bold uppercase tracking-wide" style={{ fontSize: size, color: NEON.yellow }}>
+    <span className="mtr-mono inline-flex items-center gap-1 font-bold uppercase tracking-wide rounded-full" style={{ fontSize: size, color: "#7A6500", background: alpha(NEON.yellow, 0.3), padding: `${Math.max(3, size * 0.35)}px ${Math.max(7, size * 0.7)}px` }}>
       <Sparkles size={size + 2} /> Meilleur prix garanti
     </span>
   );
@@ -1009,9 +1009,9 @@ function Hero({ setPage, featured, brands, onOpenProduct }) {
   return (
     <section ref={sectionRef} onMouseMove={onMove} onMouseLeave={() => setSpot((s) => ({ ...s, active: false }))} className="relative overflow-hidden" style={{ background: p.bg }}>
       <div className="mesh-bg">
-        <div className="mesh-blob" style={{ width: 440, height: 440, top: -140, left: -100, background: NEON.cyan, opacity: 0.22 * boost, mixBlendMode: blend }} />
-        <div className="mesh-blob" style={{ width: 380, height: 380, bottom: -160, right: -80, background: NEON.pink, opacity: 0.22 * boost, mixBlendMode: blend, animationDelay: "-8s" }} />
-        <div className="mesh-blob" style={{ width: 300, height: 300, top: "28%", right: "16%", background: NEON.lime, opacity: 0.13 * boost, mixBlendMode: blend, animationDelay: "-15s" }} />
+        <div className="mesh-blob" style={{ width: 440, height: 440, top: -140, left: -100, background: NEON.cyan, opacity: 0.3 * boost, mixBlendMode: blend }} />
+        <div className="mesh-blob" style={{ width: 380, height: 380, bottom: -160, right: -80, background: NEON.pink, opacity: 0.3 * boost, mixBlendMode: blend, animationDelay: "-8s" }} />
+        <div className="mesh-blob" style={{ width: 300, height: 300, top: "28%", right: "16%", background: NEON.lime, opacity: 0.18 * boost, mixBlendMode: blend, animationDelay: "-15s" }} />
       </div>
       <div className="spot" style={{ opacity: spot.active ? 1 : 0, background: `radial-gradient(360px circle at ${spot.x}% ${spot.y}%, rgba(0,240,255,0.16), rgba(255,46,136,0.12) 45%, transparent 70%)` }} />
       {[{ t: "12%", l: "62%", s: 6, c: NEON.cyan, d: "0s" }, { t: "68%", l: "48%", s: 4, c: NEON.pink, d: "-2.2s" }, { t: "38%", l: "82%", s: 5, c: NEON.lime, d: "-4.4s" }].map((g, i) => (
@@ -1269,7 +1269,10 @@ function CategoryStrip({ onGoCategory, categoryProducts }) {
     { category: "Optique", gender: "Homme", label: "Vue Homme", accent: NEON.yellow },
   ];
   return (
-    <section style={{ background: p.bg2 }} className="py-16 md:py-20">
+    <section
+      className="py-16 md:py-20"
+      style={{ background: dark ? `linear-gradient(120deg, ${alpha(NEON.violet, 0.1)}, ${alpha(NEON.cyan, 0.08)}), ${p.bg2}` : `linear-gradient(120deg, ${alpha(NEON.violet, 0.09)}, ${alpha(NEON.cyan, 0.07)}), ${p.bg2}` }}
+    >
       <div ref={ref} className={`reveal ${visible ? "visible" : ""} max-w-6xl mx-auto px-5 md:px-8`}>
         <Eyebrow>Parcourir par catégorie</Eyebrow>
         <h2 className="mtr-display text-3xl md:text-4xl font-bold mb-6" style={{ color: p.text }}>Quatre univers, un catalogue</h2>
@@ -1282,10 +1285,10 @@ function CategoryStrip({ onGoCategory, categoryProducts }) {
                 key={t.label}
                 onClick={() => onGoCategory(t.category, t.gender)}
                 className="neon-border card-lift group relative rounded-3xl text-left overflow-hidden"
-                style={{ background: p.bg, border: `1px solid ${dark ? p.border : alpha(t.accent, 0.35)}`, "--edge": t.accent, height: "clamp(260px, 42vw, 340px)" }}
+                style={{ background: alpha(t.accent, dark ? 0.14 : 0.12), border: `1px solid ${dark ? p.border : alpha(t.accent, 0.35)}`, "--edge": t.accent, height: "clamp(260px, 42vw, 340px)" }}
               >
                 <div className="mesh-bg">
-                  <div className="mesh-blob" style={{ width: 260, height: 260, top: -80, right: -60, background: t.accent, opacity: dark ? 0.22 : 0.4, mixBlendMode: dark ? "screen" : "multiply" }} />
+                  <div className="mesh-blob" style={{ width: 260, height: 260, top: -80, right: -60, background: t.accent, opacity: dark ? 0.3 : 0.5, mixBlendMode: dark ? "screen" : "multiply" }} />
                 </div>
                 {product?.photos?.[0] && (
                   <img
@@ -1298,8 +1301,15 @@ function CategoryStrip({ onGoCategory, categoryProducts }) {
                 {/* La photo occupe désormais une zone dédiée en haut de la carte (62% de la hauteur,
                    au lieu de remplir toute la carte derrière le texte) et le bloc texte est compact
                    en bas, sur fond plein — les deux ne se marchent plus dessus : la monture reste
-                   visible ET le titre reste lisible, quelle que soit la hauteur de la carte. */}
-                <div className="absolute inset-x-0 bottom-0 p-4 md:p-7" style={{ background: p.bg, borderTop: `1px solid ${p.border}` }}>
+                   visible ET le titre reste lisible, quelle que soit la hauteur de la carte. Le fond
+                   (carte + bandeau texte) reprend désormais une teinte de la couleur fluo propre à
+                   chaque catégorie, au lieu d'un blanc uni — demandé pour donner plus de place à la
+                   couleur sur le site. */}
+                {/* Fond composé de deux couches (teinte fluo + p.bg opaque en dessous) plutôt qu'une
+                   simple couleur translucide : ça garde le bandeau texte totalement opaque (donc
+                   toujours lisible, même si le panneau chevauche le bas de la photo) tout en étant
+                   coloré au lieu de blanc uni. */}
+                <div className="absolute inset-x-0 bottom-0 p-4 md:p-7" style={{ background: `linear-gradient(${alpha(t.accent, dark ? 0.24 : 0.18)}, ${alpha(t.accent, dark ? 0.24 : 0.18)}), ${p.bg}`, borderTop: `1px solid ${alpha(t.accent, 0.3)}` }}>
                   <div className="mtr-mono text-[10px] uppercase tracking-wide mb-1" style={{ color: t.accent }}>0{i + 1}</div>
                   <div className="mtr-display font-extrabold leading-tight" style={{ color: p.text, fontSize: "clamp(1rem, 2.2vw, 1.75rem)" }}>{t.label}</div>
                   <div className="mt-1.5 inline-flex items-center gap-1.5 text-sm font-bold transition-transform group-hover:translate-x-1" style={{ color: t.accent }}>
