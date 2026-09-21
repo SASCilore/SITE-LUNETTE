@@ -1238,8 +1238,11 @@ function CategoryStrip({ onGoCategory, categoryProducts }) {
                     style={{ opacity: 0.95 }}
                   />
                 )}
-                <div className="absolute inset-x-0 bottom-0 p-5 md:p-7" style={{ background: `linear-gradient(to top, ${alpha(p.bg, 0.92)}, ${alpha(p.bg, 0.55)} 60%, transparent)` }}>
-                  <div className="mtr-mono text-[10px] uppercase tracking-wide mb-1.5" style={{ color: t.accent }}>0{i + 1}</div>
+                {/* Solid backing (not just a soft gradient) behind the whole text block — the "0{i+1}"
+                   index label sits right at its top edge, and a wide landscape product photo can
+                   reach that high in the tile, so a gradient alone left it barely readable there. */}
+                <div className="absolute inset-x-0 bottom-0 p-5 md:p-7" style={{ background: `linear-gradient(to top, ${alpha(p.bg, 0.97)}, ${alpha(p.bg, 0.97)} 75%, transparent)` }}>
+                  <div className="mtr-mono text-[10px] uppercase tracking-wide mb-1.5" style={{ color: t.accent, textShadow: `0 1px 6px ${alpha(p.bg, 0.9)}` }}>0{i + 1}</div>
                   <div className="mtr-display font-extrabold leading-tight" style={{ color: p.text, fontSize: "clamp(1.25rem, 2.4vw, 1.75rem)" }}>{t.label}</div>
                   <div className="mt-2 inline-flex items-center gap-1.5 text-sm font-bold transition-transform group-hover:translate-x-1" style={{ color: t.accent }}>
                     Découvrir ma paire <ArrowRight size={15} />
@@ -1343,7 +1346,11 @@ function LensRevealBrands({ brands, setPage }) {
         <div ref={containerRef} className="lens-reveal max-w-6xl mx-auto" style={{ height: 130 }}>
           <div className="lens-row">
             {displayBrands.map((b) => (
-              <span key={b.id} onClick={() => setPage("catalogue")} className="cursor-pointer" style={{ color: alpha(p.text, 0.26) }}>{b.name}</span>
+              // Desktop keeps this layer faint (26% opacity) on purpose — the traveling glasses
+              // glyph is what "reveals" it at full brightness as it sweeps past. Mobile skips that
+              // sweep entirely (see isDesktop above), so it needs to be legible on its own — that
+              // 26%-opacity layer alone reading as "no text at all" is exactly what was reported.
+              <span key={b.id} onClick={() => setPage("catalogue")} className="cursor-pointer" style={{ color: isDesktop ? alpha(p.text, 0.26) : alpha(p.text, 0.82) }}>{b.name}</span>
             ))}
           </div>
           {visible && isDesktop && (
