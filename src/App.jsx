@@ -1229,7 +1229,7 @@ function CategoryStrip({ onGoCategory, categoryProducts }) {
                 key={t.label}
                 onClick={() => onGoCategory(t.category, t.gender)}
                 className="neon-border card-lift group relative rounded-3xl text-left overflow-hidden"
-                style={{ background: p.bg, border: `1px solid ${dark ? p.border : alpha(t.accent, 0.35)}`, "--edge": t.accent, height: "clamp(220px, 32vw, 340px)" }}
+                style={{ background: p.bg, border: `1px solid ${dark ? p.border : alpha(t.accent, 0.35)}`, "--edge": t.accent, height: "clamp(260px, 42vw, 340px)" }}
               >
                 <div className="mesh-bg">
                   <div className="mesh-blob" style={{ width: 260, height: 260, top: -80, right: -60, background: t.accent, opacity: dark ? 0.22 : 0.4, mixBlendMode: dark ? "screen" : "multiply" }} />
@@ -1238,17 +1238,18 @@ function CategoryStrip({ onGoCategory, categoryProducts }) {
                   <img
                     src={product.photos[0]}
                     alt=""
-                    className="absolute inset-0 w-full h-full object-contain p-6 md:p-10 transition-transform duration-500 group-hover:scale-105"
+                    className="absolute inset-x-0 top-0 w-full h-[62%] object-contain p-5 md:p-8 transition-transform duration-500 group-hover:scale-105"
                     style={{ opacity: 0.95 }}
                   />
                 )}
-                {/* Solid backing (not just a soft gradient) behind the whole text block — the "0{i+1}"
-                   index label sits right at its top edge, and a wide landscape product photo can
-                   reach that high in the tile, so a gradient alone left it barely readable there. */}
-                <div className="absolute inset-x-0 bottom-0 p-5 md:p-7" style={{ background: `linear-gradient(to top, ${alpha(p.bg, 0.97)}, ${alpha(p.bg, 0.97)} 75%, transparent)` }}>
-                  <div className="mtr-mono text-[10px] uppercase tracking-wide mb-1.5" style={{ color: t.accent, textShadow: `0 1px 6px ${alpha(p.bg, 0.9)}` }}>0{i + 1}</div>
-                  <div className="mtr-display font-extrabold leading-tight" style={{ color: p.text, fontSize: "clamp(1.25rem, 2.4vw, 1.75rem)" }}>{t.label}</div>
-                  <div className="mt-2 inline-flex items-center gap-1.5 text-sm font-bold transition-transform group-hover:translate-x-1" style={{ color: t.accent }}>
+                {/* La photo occupe désormais une zone dédiée en haut de la carte (62% de la hauteur,
+                   au lieu de remplir toute la carte derrière le texte) et le bloc texte est compact
+                   en bas, sur fond plein — les deux ne se marchent plus dessus : la monture reste
+                   visible ET le titre reste lisible, quelle que soit la hauteur de la carte. */}
+                <div className="absolute inset-x-0 bottom-0 p-4 md:p-7" style={{ background: p.bg, borderTop: `1px solid ${p.border}` }}>
+                  <div className="mtr-mono text-[10px] uppercase tracking-wide mb-1" style={{ color: t.accent }}>0{i + 1}</div>
+                  <div className="mtr-display font-extrabold leading-tight" style={{ color: p.text, fontSize: "clamp(1rem, 2.2vw, 1.75rem)" }}>{t.label}</div>
+                  <div className="mt-1.5 inline-flex items-center gap-1.5 text-sm font-bold transition-transform group-hover:translate-x-1" style={{ color: t.accent }}>
                     Découvrir ma paire <ArrowRight size={15} />
                   </div>
                 </div>
