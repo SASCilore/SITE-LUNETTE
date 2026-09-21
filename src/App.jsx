@@ -189,23 +189,36 @@ function useScrollProgress(ref) {
   // Demandé explicitement : cette animation reste active même si le visiteur a activé
   // "Réduire les animations" sur son appareil, pour que l'effet joue pour tout le monde
   // (comme la galerie scroll plus haut, qui n'en tient pas compte non plus).
+  //
+  // Cause du "manque de fluidité" : `getBoundingClientRect()` appelé à CHAQUE frame de scroll
+  // force le navigateur à recalculer toute la mise en page ("layout thrashing") avant de pouvoir
+  // répondre — c'est ça qui saccade le défilement, pas le calcul en lui-même. On ne mesure plus
+  // la position/hauteur de la section qu'une fois au montage (et au redimensionnement) ; à chaque
+  // frame de scroll on se contente d'une soustraction avec `window.scrollY`, qui ne déclenche pas
+  // ce recalcul de mise en page.
+  const metricsRef = useRef({ top: 0, height: 0 });
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     let raf = null;
-    const compute = () => {
+    const measure = () => {
       const rect = el.getBoundingClientRect();
+      metricsRef.current = { top: rect.top + window.scrollY, height: rect.height };
+    };
+    const compute = () => {
+      const { top, height } = metricsRef.current;
       const vh = window.innerHeight;
-      const total = rect.height - vh;
-      const pr = total > 0 ? Math.min(1, Math.max(0, -rect.top / total)) : 0;
+      const total = height - vh;
+      const pr = total > 0 ? Math.min(1, Math.max(0, (window.scrollY - top) / total)) : 0;
       setProgress(pr);
       raf = null;
     };
     const onScroll = () => { if (!raf) raf = requestAnimationFrame(compute); };
+    measure();
     compute();
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
-    return () => { window.removeEventListener("scroll", onScroll); window.removeEventListener("resize", onScroll); if (raf) cancelAnimationFrame(raf); };
+    window.addEventListener("resize", measure);
+    return () => { window.removeEventListener("scroll", onScroll); window.removeEventListener("resize", measure); if (raf) cancelAnimationFrame(raf); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return progress;
