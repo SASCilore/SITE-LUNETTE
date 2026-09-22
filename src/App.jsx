@@ -95,6 +95,33 @@ const alpha = (hex, a) => {
   return `rgba(${r},${g},${b},${a})`;
 };
 
+// URLs propres par page/produit (voir "routing" dans Root) — un slug lisible ("ray-ban-aviator")
+// suivi d'un fragment de l'id réel pour rester unique même si deux produits ont un nom proche.
+const slugify = (str) =>
+  (str || "")
+    .toString()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+const productSlug = (product) => `${slugify(product.name)}-${product.id.slice(-8)}`;
+
+// Chemins propres pour les catégories qui ont une combinaison "type + genre" claire ; les autres
+// filtres (marque, tri…) restent sur /catalogue — pas besoin d'une URL dédiée pour ceux-là.
+const CATEGORY_PATHS = {
+  "Solaire_Femme": "/lunettes-de-soleil/femme",
+  "Optique_Femme": "/lunettes-de-vue/femme",
+  "Solaire_Homme": "/lunettes-de-soleil/homme",
+  "Optique_Homme": "/lunettes-de-vue/homme",
+};
+const pathForPage = (pg, filter) => {
+  if (pg === "catalogue") return CATEGORY_PATHS[`${filter?.category}_${filter?.gender}`] || "/catalogue";
+  if (pg === "marques") return "/marques";
+  if (pg === "apropos") return "/a-propos";
+  if (pg === "pro") return "/pro";
+  return "/";
+};
+
 /* ---------------------------------- HOOKS ---------------------------------- */
 
 function useReveal(threshold = 0.15) {
@@ -2094,10 +2121,10 @@ function ProductModal({ product, brand, onClose, onAddToCart, insights, isWishli
   useEffect(() => setQty(1), [product]);
   useEffect(() => { if (product) onView?.(product.id); }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // SEO: dynamic page title + JSON-LD Product structured data (price, availability, rating) so
-  // Google can show rich results. Note: this is a single-page app with no per-product URL, so a
-  // search engine can index this content but can't deep-link straight to one product yet — real
-  // per-product URLs would need client-side routing, a separate, bigger change.
+  // SEO: dynamic page title + meta description + Open Graph tags + JSON-LD Product structured
+  // data (price, availability, rating) so Google can show rich results. Le produit a maintenant sa
+  // propre URL (/produit/<slug>, voir openProduct dans Root) donc un lien partagé ou indexé pointe
+  // vraiment vers cette fiche — d'où les balises og:* ci-dessous, absentes jusqu'ici.
   useEffect(() => {
     if (!product) return;
     const prevTitle = document.title;
@@ -2105,7 +2132,22 @@ function ProductModal({ product, brand, onClose, onAddToCart, insights, isWishli
     let meta = document.querySelector('meta[name="description"]');
     const prevDesc = meta?.getAttribute("content") || "";
     if (!meta) { meta = document.createElement("meta"); meta.setAttribute("name", "description"); document.head.appendChild(meta); }
-    meta.setAttribute("content", product.description || `${product.name} — ${euro(product.price)}, livraison incluse. Authenticité garantie.`);
+    const desc = product.description || `${product.name} — ${euro(product.price)}, livraison incluse. Authenticité garantie.`;
+    meta.setAttribute("content", desc);
+
+    const setOg = (property, content) => {
+      let tag = document.querySelector(`meta[property="${property}"]`);
+      const prev = tag?.getAttribute("content") || null;
+      if (!tag) { tag = document.createElement("meta"); tag.setAttribute("property", property); document.head.appendChild(tag); }
+      tag.setAttribute("content", content);
+      return prev;
+    };
+    const prevOg = {
+      title: setOg("og:title", `${product.name} — ${euro(product.price)}`),
+      description: setOg("og:description", desc),
+      url: setOg("og:url", window.location.href),
+      image: product.photos?.[0] ? setOg("og:image", product.photos[0]) : undefined,
+    };
 
     const script = document.createElement("script");
     script.type = "application/ld+json";
@@ -2129,6 +2171,9 @@ function ProductModal({ product, brand, onClose, onAddToCart, insights, isWishli
     return () => {
       document.title = prevTitle;
       if (meta) meta.setAttribute("content", prevDesc);
+      if (prevOg.title != null) document.querySelector('meta[property="og:title"]')?.setAttribute("content", prevOg.title);
+      if (prevOg.description != null) document.querySelector('meta[property="og:description"]')?.setAttribute("content", prevOg.description);
+      if (prevOg.url != null) document.querySelector('meta[property="og:url"]')?.setAttribute("content", prevOg.url);
       script.remove();
     };
   }, [product]);
@@ -4735,27 +4780,103 @@ function Root() {
     window.location.href = url;
   };
 
-  // Base page title per section (overridden temporarily while a product modal is open — see
-  // ProductModal's own title effect, which restores this value on close).
+  // Base page title + meta description + OG tags per section (overridden temporarily while a
+  // product modal is open — see ProductModal's own title effect, which restores these on close).
+  // Avant ce changement, la balise <meta name="description"> restait toujours celle de la page
+  // d'accueil (définie dans index.html) quelle que soit la page réellement affichée.
   useEffect(() => {
     if (mode === "admin") { document.title = "Administration — go2glass"; return; }
     const titles = { home: "go2glass — Lunettes de marque au meilleur prix", catalogue: "Catalogue — go2glass", marques: "Nos marques — go2glass", apropos: "À propos — go2glass", pro: "Espace professionnel — go2glass" };
-    document.title = titles[page] || "go2glass";
+    const descriptions = {
+      home: "Ray-Ban, Oakley, Prada, Persol, Gucci, Carrera : lunettes de marque authentiques à prix imbattables, livrées en 24h partout en France.",
+      catalogue: "Tout le catalogue go2glass : lunettes de soleil et de vue de grandes marques, prix discount, livraison incluse, zéro contrefaçon.",
+      marques: "Toutes les marques de lunettes disponibles chez go2glass — sélection authentique et vérifiée, prix compétitifs.",
+      apropos: "go2glass, la lunetterie en ligne qui casse les prix sans jamais transiger sur l'authenticité des montures.",
+      pro: "Espace professionnel go2glass : tarifs dédiés aux opticiens et revendeurs, catalogue B2B sur demande.",
+    };
+    const title = titles[page] || "go2glass";
+    const description = descriptions[page] || descriptions.home;
+    document.title = title;
+    document.querySelector('meta[name="description"]')?.setAttribute("content", description);
+    document.querySelector('meta[property="og:title"]')?.setAttribute("content", title);
+    document.querySelector('meta[property="og:description"]')?.setAttribute("content", description);
+    document.querySelector('meta[property="og:url"]')?.setAttribute("content", window.location.href);
   }, [page, mode]);
 
-  const goAdmin = () => { setMode("admin"); setCartOpen(false); };
-  const backToSite = () => setMode("site");
+  const goAdmin = () => { setMode("admin"); setCartOpen(false); window.history.pushState({}, "", "/admin"); };
+  const backToSite = () => { setMode("site"); window.history.pushState({}, "", pathForPage(page, catalogFilter)); };
   // Wraps setPage so any "go to catalogue" entry point (hero CTA, footer, brand cards…) resets
   // the category/gender filter to "Tous" — only the header's dedicated category links set a filter.
+  // Also pushes a real URL for the page (see pathForPage) so it can be indexed, bookmarked and
+  // shared, and so the browser's back/forward buttons work (see the popstate listener below).
   const goPage = (pg) => {
-    if (pg === "catalogue") setCatalogFilter({ category: "Tous", gender: "Tous" });
+    const filter = pg === "catalogue" ? { category: "Tous", gender: "Tous" } : catalogFilter;
+    if (pg === "catalogue") setCatalogFilter(filter);
     setPage(pg);
+    window.history.pushState({}, "", pathForPage(pg, filter));
   };
   const goCategory = (category, gender) => {
     setCatalogFilter({ category, gender });
     setPage("catalogue");
     window.scrollTo({ top: 0 });
+    window.history.pushState({}, "", pathForPage("catalogue", { category, gender }));
   };
+  // Ouvre/ferme la fiche produit (modale) ET tient l'URL à jour en même temps — c'est ce qui
+  // manquait pour qu'un produit ait une adresse à lui (partageable, indexable par Google), plutôt
+  // que de toujours répondre à la même URL que le catalogue. Toutes les entrées vers une fiche
+  // produit (Hero, catalogue, liste d'envies, quiz, recherche…) passent par cette fonction au lieu
+  // d'appeler setActiveProduct directement.
+  const openProduct = (product) => {
+    setActiveProduct(product);
+    if (product) window.history.pushState({}, "", `/produit/${productSlug(product)}`);
+  };
+  const closeProduct = () => {
+    setActiveProduct(null);
+    window.history.pushState({}, "", pathForPage(page, catalogFilter));
+  };
+
+  // Applique une URL (chemin réel) à l'état de l'app — utilisé au premier chargement (lien direct,
+  // partagé ou indexé par Google) et à chaque retour/avance dans l'historique du navigateur.
+  const applyPath = (path, productsList) => {
+    if (path === "/admin") { setMode("admin"); return; }
+    setMode("site");
+    if (path.startsWith("/produit/")) {
+      const slug = path.slice("/produit/".length);
+      const match = productsList.find((pr) => productSlug(pr) === slug);
+      if (match) { setActiveProduct(match); return; }
+    }
+    setActiveProduct(null);
+    if (path === "/marques") { setPage("marques"); return; }
+    if (path === "/a-propos") { setPage("apropos"); return; }
+    if (path === "/pro") { setPage("pro"); return; }
+    if (path === "/catalogue") { setCatalogFilter({ category: "Tous", gender: "Tous" }); setPage("catalogue"); return; }
+    const categoryEntry = Object.entries(CATEGORY_PATHS).find(([, p]) => p === path);
+    if (categoryEntry) {
+      const [category, gender] = categoryEntry[0].split("_");
+      setCatalogFilter({ category, gender });
+      setPage("catalogue");
+      return;
+    }
+    setPage("home");
+  };
+
+  // Premier chargement : si l'URL pointe déjà vers une page ou un produit précis (lien partagé,
+  // résultat Google, actualisation de page), on l'applique dès que les produits sont chargés (il
+  // faut la liste des produits pour retrouver lequel correspond au slug dans l'URL).
+  const initialPathRef = useRef(window.location.pathname);
+  useEffect(() => {
+    if (products.length === 0) return;
+    applyPath(initialPathRef.current, products);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products.length > 0]);
+
+  // Boutons précédent/suivant du navigateur.
+  useEffect(() => {
+    const onPopState = () => applyPath(window.location.pathname, products);
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products]);
   const handleLogin = async (email, password) => { await signIn(email, password); };
   const handleLogout = async () => { await signOut(); };
 
@@ -4831,7 +4952,7 @@ function Root() {
       <div key={page} className="mtr-page-enter">
         {page === "home" && (
           <>
-            <Hero setPage={goPage} featured={featuredProduct} brands={brands} onOpenProduct={setActiveProduct} />
+            <Hero setPage={goPage} featured={featuredProduct} brands={brands} onOpenProduct={openProduct} />
             <ProductGalleryScroll products={products} setPage={goPage} />
             <CategoryStrip onGoCategory={goCategory} categoryProducts={categoryProducts} />
             <QuizBanner onOpen={() => setQuizOpen(true)} />
@@ -4844,7 +4965,7 @@ function Root() {
                 eyebrowColor={NEON.orange}
                 products={deepDiscountProducts}
                 brands={brands}
-                onOpen={setActiveProduct}
+                onOpen={openProduct}
                 productInsights={productInsights}
                 wishlistIds={wishlistIds}
                 onToggleWishlist={toggleWishlist}
@@ -4856,7 +4977,7 @@ function Root() {
               eyebrowColor={NEON.pink}
               products={products.filter((pr) => pr.featured)}
               brands={brands}
-              onOpen={setActiveProduct}
+              onOpen={openProduct}
               productInsights={productInsights}
               wishlistIds={wishlistIds}
               onToggleWishlist={toggleWishlist}
@@ -4869,7 +4990,7 @@ function Root() {
                 eyebrowColor={NEG}
                 products={products.filter((pr) => productInsights[pr.id]?.lowStock)}
                 brands={brands}
-                onOpen={setActiveProduct}
+                onOpen={openProduct}
                 productInsights={productInsights}
                 wishlistIds={wishlistIds}
                 onToggleWishlist={toggleWishlist}
@@ -4882,7 +5003,7 @@ function Root() {
                 eyebrowColor={NEON.blue}
                 products={recentlyViewed.map((id) => products.find((pr) => pr.id === id)).filter(Boolean)}
                 brands={brands}
-                onOpen={setActiveProduct}
+                onOpen={openProduct}
                 productInsights={productInsights}
                 wishlistIds={wishlistIds}
                 onToggleWishlist={toggleWishlist}
@@ -4891,7 +5012,7 @@ function Root() {
             <TrustBand brands={brands} products={products} orders={orders} />
           </>
         )}
-        {page === "catalogue" && <CatalogPage products={products} brands={brands} onOpen={setActiveProduct} initialFilter={catalogFilter} productInsights={productInsights} wishlistIds={wishlistIds} onToggleWishlist={toggleWishlist} />}
+        {page === "catalogue" && <CatalogPage products={products} brands={brands} onOpen={openProduct} initialFilter={catalogFilter} productInsights={productInsights} wishlistIds={wishlistIds} onToggleWishlist={toggleWishlist} />}
         {page === "marques" && <BrandsPage brands={brands} products={products} setPage={goPage} />}
         {page === "apropos" && <AboutPage setPage={goPage} />}
         {page === "pro" && <ProPage session={session} profile={profile} products={products} brands={brands} onAddToCart={addToCart} onRequestPro={handleRequestPro} onOpenAccount={() => setAccountOpen(true)} />}
@@ -4902,7 +5023,7 @@ function Root() {
       <ProductModal
         product={activeProduct}
         brand={activeProduct ? brands.find((b) => b.id === activeProduct.brandId) : null}
-        onClose={() => setActiveProduct(null)}
+        onClose={closeProduct}
         onAddToCart={addToCart}
         insights={activeProduct ? productInsights[activeProduct.id] : null}
         isWishlisted={activeProduct ? wishlistIds.includes(activeProduct.id) : false}
@@ -4915,10 +5036,10 @@ function Root() {
         onToggleCompare={toggleCompare}
       />
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} cart={cart} products={products} brands={brands} updateQty={updateQty} removeItem={removeItem} onCheckout={() => { setCartOpen(false); setCheckoutOpen(true); }} />
-      <WishlistDrawer open={wishlistOpen} onClose={() => setWishlistOpen(false)} wishlistIds={wishlistIds} products={products} brands={brands} onRemove={toggleWishlist} onAddToCart={addToCart} onOpenProduct={setActiveProduct} />
+      <WishlistDrawer open={wishlistOpen} onClose={() => setWishlistOpen(false)} wishlistIds={wishlistIds} products={products} brands={brands} onRemove={toggleWishlist} onAddToCart={addToCart} onOpenProduct={openProduct} />
       <AccountDrawer open={accountOpen} onClose={() => setAccountOpen(false)} session={session} profile={profile} orders={orders} onSignIn={signIn} onSignUp={signUp} onSignOut={async () => { await signOut(); setAccountOpen(false); }} />
-      <QuizWidget open={quizOpen} onClose={() => setQuizOpen(false)} products={products} brands={brands} onOpenProduct={setActiveProduct} onGoCategory={goCategory} />
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} products={products} brands={brands} onOpenProduct={setActiveProduct} setPage={goPage} />
+      <QuizWidget open={quizOpen} onClose={() => setQuizOpen(false)} products={products} brands={brands} onOpenProduct={openProduct} onGoCategory={goCategory} />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} products={products} brands={brands} onOpenProduct={openProduct} setPage={goPage} />
       <FloatingCartWidget cartCount={cartCount} subtotal={cart.reduce((s, c) => s + (c.unitPrice ?? products.find((pr) => pr.id === c.productId)?.price ?? 0) * c.qty, 0)} onOpen={() => setCartOpen(true)} />
       <CompareBar compareIds={compareIds} products={products} onOpen={() => setCompareOpen(true)} onClear={() => setCompareIds([])} />
       <CompareModal open={compareOpen} onClose={() => setCompareOpen(false)} compareIds={compareIds} products={products} brands={brands} productInsights={productInsights} onRemove={toggleCompare} />
