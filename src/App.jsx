@@ -4809,6 +4809,25 @@ function RadialShaderCanvas({ pixelRatio }) {
 function LoadingScreen() {
   return (
     <div style={{ position: "fixed", inset: 0, width: "100vw", height: "100dvh", background: "#050507", overflow: "hidden", zIndex: 9999 }}>
+      {/* Repli 100% CSS, derrière le canvas : certains navigateurs desktop (plus souvent que sur
+         mobile) refusent silencieusement de créer un contexte WebGL2 — extension de confidentialité,
+         accélération matérielle désactivée dans les réglages du navigateur, etc. Dans ce cas
+         `RadialShaderCanvas` ne dessine jamais rien et son canvas reste transparent, ce qui laissait
+         voir un écran figé (juste le logo immobile, remonté sur PC). Ce halo dégradé tourne en CSS
+         pur — aucune dépendance à WebGL — donc il y a toujours une animation visible ; le canvas,
+         opaque dès qu'il dessine une frame, le recouvre automatiquement quand le shader fonctionne. */}
+      <style>{`@keyframes g2gFallbackSpin { to { transform: rotate(1turn); } }`}</style>
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: "-30%",
+          background: `conic-gradient(from 0deg, ${NEON.blue}, ${NEON.cyan}, ${NEON.violet}, ${NEON.pink}, ${NEON.orange}, ${NEON.yellow}, ${NEON.blue})`,
+          filter: "blur(80px) saturate(1.4)",
+          opacity: 0.55,
+          animation: "g2gFallbackSpin 14s linear infinite",
+        }}
+      />
       <RadialShaderCanvas />
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 pointer-events-none">
         <div style={{ filter: `drop-shadow(0 0 22px ${alpha(NEON.cyan, 0.55)}) drop-shadow(0 0 40px ${alpha(NEON.violet, 0.35)})` }}>
