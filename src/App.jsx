@@ -91,13 +91,30 @@ const alpha = (hex, a) => {
   return `rgba(${r},${g},${b},${a})`;
 };
 
-// Fond en léger dégradé fluo (violet -> cyan), réutilisé sur toutes les sections "pleine largeur"
-// de la page d'accueil pour éviter l'alternance couleur/blanc pur remontée par l'utilisateur —
-// certaines sections gardaient l'ancien fond plat (p.bg / p.bg2) pendant que d'autres avaient déjà
-// reçu ce traitement lors du passage "plus de fluo". `base` reste le fond de repli (p.bg ou p.bg2
-// selon la section) pour garder la même hiérarchie claire/gris entre sections voisines.
-const sectionWash = (dark, base) =>
-  `linear-gradient(120deg, ${alpha(NEON.violet, dark ? 0.1 : 0.09)}, ${alpha(NEON.cyan, dark ? 0.08 : 0.07)}), ${base}`;
+// Fond en dégradé fluo continu appliqué UNE SEULE FOIS sur le conteneur racine du site (voir Root
+// plus bas), pas section par section. Une première version posait le même petit dégradé sur chaque
+// <section> indépendamment (avec `base` en couleur de repli) : chaque section recommençait son propre
+// dégradé à 0% à partir de son propre bord haut, ce qui créait forcément une "cassure" visible à
+// chaque frontière entre deux sections. En posant un seul dégradé multi-étapes sur le wrapper qui
+// englobe toute la page (et en laissant chaque section transparente en dessous), la transition
+// suit la descente complète du site sans aucun trait de coupure.
+const pageGradient = (dark) => {
+  const a = dark ? 0.16 : 0.11;
+  const b = dark ? 0.11 : 0.075;
+  return (
+    `linear-gradient(180deg, ` +
+    `${alpha(NEON.violet, a)} 0%, ` +
+    `${alpha(NEON.blue, b)} 11%, ` +
+    `${alpha(NEON.cyan, a)} 23%, ` +
+    `${alpha(NEON.violet, b)} 36%, ` +
+    `${alpha(NEON.pink, a)} 50%, ` +
+    `${alpha(NEON.orange, b)} 64%, ` +
+    `${alpha(NEON.yellow, a * 0.85)} 77%, ` +
+    `${alpha(NEON.cyan, b)} 89%, ` +
+    `${alpha(NEON.blue, a)} 100%` +
+    `), ${dark ? "#07080A" : "#FAFAF8"}`
+  );
+};
 
 // URLs propres par page/produit (voir "routing" dans Root) — un slug lisible ("ray-ban-aviator")
 // suivi d'un fragment de l'id réel pour rester unique même si deux produits ont un nom proche.
@@ -1044,7 +1061,7 @@ function Hero({ setPage, featured, brands, onOpenProduct }) {
   };
 
   return (
-    <section ref={sectionRef} onMouseMove={onMove} onMouseLeave={() => setSpot((s) => ({ ...s, active: false }))} className="relative overflow-hidden" style={{ background: sectionWash(dark, p.bg) }}>
+    <section ref={sectionRef} onMouseMove={onMove} onMouseLeave={() => setSpot((s) => ({ ...s, active: false }))} className="relative overflow-hidden" style={{ background: "transparent" }}>
       <div className="mesh-bg">
         <div className="mesh-blob" style={{ width: 440, height: 440, top: -140, left: -100, background: NEON.cyan, opacity: 0.3 * boost, mixBlendMode: blend }} />
         <div className="mesh-blob" style={{ width: 380, height: 380, bottom: -160, right: -80, background: NEON.pink, opacity: 0.3 * boost, mixBlendMode: blend, animationDelay: "-8s" }} />
@@ -1251,7 +1268,7 @@ function ProductGalleryScroll({ products, setPage }) {
   if (images.length === 0) return null; // catalogue vide — rien à montrer
 
   return (
-    <section className="relative" style={{ background: sectionWash(dark, p.bg) }}>
+    <section className="relative" style={{ background: "transparent" }}>
       <div className="max-w-6xl mx-auto px-5 md:px-8 pt-16 pb-6 text-center relative z-10">
         <Eyebrow color={NEON.pink}>Le catalogue en un regard</Eyebrow>
         <h2 className="mtr-display text-3xl md:text-4xl font-bold" style={{ color: p.text }}>Toutes les montures défilent sous vos yeux</h2>
@@ -1317,7 +1334,7 @@ function ScrollGlassesStory({ featured }) {
   );
 
   return (
-    <section ref={sectionRef} style={{ height: "320svh", position: "relative", background: sectionWash(dark, p.bg) }}>
+    <section ref={sectionRef} style={{ height: "320svh", position: "relative", background: "transparent" }}>
       {/* "svh" (small viewport height) instead of "vh" — on mobile Safari/Chrome, "100vh" includes
          the space the address bar takes up when it's collapsed, so the pinned box's real height
          keeps jumping as the bar shows/hides while scrolling, opening up the gaps of blank space
@@ -1381,7 +1398,7 @@ function CategoryStrip({ onGoCategory, categoryProducts }) {
   return (
     <section
       className="py-16 md:py-20"
-      style={{ background: sectionWash(dark, p.bg2) }}
+      style={{ background: "transparent" }}
     >
       <div ref={ref} className={`reveal ${visible ? "visible" : ""} max-w-6xl mx-auto px-5 md:px-8`}>
         <Eyebrow>Parcourir par catégorie</Eyebrow>
@@ -1518,7 +1535,7 @@ function LensRevealBrands({ brands, setPage }) {
   }, [visible, containerWidth, isDesktop]);
 
   return (
-    <section style={{ background: sectionWash(dark, p.bg2) }}>
+    <section style={{ background: "transparent" }}>
       <div className="hairline" style={{ background: `linear-gradient(to right, transparent, ${p.border}, transparent)` }} />
       <div ref={sectionRef}>
         <div ref={containerRef} className="lens-reveal max-w-6xl mx-auto" style={{ height: 130 }}>
@@ -1615,7 +1632,7 @@ function ProductRail({ title, eyebrow, eyebrowColor = NEON.pink, products, brand
   const [headRef, headVisible] = useReveal(0.3);
   if (!products.length) return null;
   return (
-    <section style={{ background: sectionWash(dark, p.bg) }} className="py-20 md:py-24">
+    <section style={{ background: "transparent" }} className="py-20 md:py-24">
       <div className="max-w-6xl mx-auto px-5 md:px-8">
         <div ref={headRef} className={`reveal ${headVisible ? "visible" : ""} flex items-end justify-between mb-10`}>
           <div>
@@ -1689,7 +1706,7 @@ function TrustBand({ brands, products, orders }) {
   // stay true as the catalog and order history actually grow.
   const pairsShipped = orders.filter((o) => o.paymentStatus === "paid").reduce((s, o) => s + (o.items || []).reduce((sq, it) => sq + it.qty, 0), 0);
   return (
-    <section style={{ background: sectionWash(dark, p.bg2), position: "relative", overflow: "hidden" }} className="py-20 md:py-24">
+    <section style={{ background: "transparent", position: "relative", overflow: "hidden" }} className="py-20 md:py-24">
       <SectionGlow variant="corners" />
       <div className="relative max-w-6xl mx-auto px-5 md:px-8">
         <div ref={ref} className="grid sm:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-5 mb-16">
@@ -1715,7 +1732,7 @@ function TrustBand({ brands, products, orders }) {
 function Footer({ setPage, onGoAdmin }) {
   const { p, dark } = useTheme();
   return (
-    <footer style={{ background: sectionWash(dark, p.bg) }} className="pt-14 pb-8 border-t" >
+    <footer style={{ background: "transparent" }} className="pt-14 pb-8 border-t" >
       <div className="max-w-6xl mx-auto px-5 md:px-8 pt-10 grid md:grid-cols-4 gap-10">
         <div>
           <Logo size={22} />
@@ -1845,7 +1862,7 @@ function CatalogPage({ products, brands, onOpen, initialFilter, productInsights,
   );
 
   return (
-    <div style={{ background: sectionWash(dark, p.bg), minHeight: "60vh", position: "relative", overflow: "hidden" }} className="py-12">
+    <div style={{ background: "transparent", minHeight: "60vh", position: "relative", overflow: "hidden" }} className="py-12">
       <SectionGlow />
       <div className="relative max-w-6xl mx-auto px-5 md:px-8">
         <div className="flex items-center justify-between mb-8">
@@ -1911,7 +1928,7 @@ function CatalogPage({ products, brands, onOpen, initialFilter, productInsights,
 function BrandsPage({ brands, products, setPage }) {
   const { p, dark } = useTheme();
   return (
-    <div style={{ background: sectionWash(dark, p.bg), minHeight: "60vh", position: "relative", overflow: "hidden" }} className="py-12">
+    <div style={{ background: "transparent", minHeight: "60vh", position: "relative", overflow: "hidden" }} className="py-12">
       <SectionGlow variant="corners" />
       <div className="relative max-w-6xl mx-auto px-5 md:px-8">
         <Eyebrow color={NEON.blue}>Marques référencées</Eyebrow>
@@ -1998,7 +2015,7 @@ function ProPage({ session, profile, products, brands, onAddToCart, onRequestPro
   const proProducts = products.filter((pr) => pr.proPrice !== null && pr.proPrice !== undefined);
 
   return (
-    <div style={{ background: sectionWash(dark, p.bg), minHeight: "60vh", position: "relative", overflow: "hidden" }} className="py-12">
+    <div style={{ background: "transparent", minHeight: "60vh", position: "relative", overflow: "hidden" }} className="py-12">
       <SectionGlow />
       <div className="relative max-w-3xl mx-auto px-5 md:px-8">
         <Eyebrow color={NEON.blue}>Espace professionnel</Eyebrow>
@@ -2081,7 +2098,7 @@ function ProPage({ session, profile, products, brands, onAddToCart, onRequestPro
 function AboutPage({ setPage }) {
   const { p, dark } = useTheme();
   return (
-    <div style={{ background: sectionWash(dark, p.bg), minHeight: "60vh", position: "relative", overflow: "hidden" }} className="py-12">
+    <div style={{ background: "transparent", minHeight: "60vh", position: "relative", overflow: "hidden" }} className="py-12">
       <SectionGlow />
       <div className="relative max-w-3xl mx-auto px-5 md:px-8">
         <Eyebrow color={NEON.lime}>À propos de go2glass</Eyebrow>
@@ -2731,7 +2748,7 @@ function QuizBanner({ onOpen }) {
   const { p, dark } = useTheme();
   const [ref, visible] = useReveal(0.3);
   return (
-    <section style={{ background: sectionWash(dark, p.bg2) }} className="py-14">
+    <section style={{ background: "transparent" }} className="py-14">
       <div ref={ref} className={`reveal ${visible ? "visible" : ""} max-w-6xl mx-auto px-5 md:px-8`}>
         <button
           onClick={onOpen}
@@ -5273,7 +5290,7 @@ function Root() {
   }
 
   return (
-    <div className="mtr grain" style={{ background: sectionWash(dark, p.bg), minHeight: "100vh" }}>
+    <div className="mtr grain" style={{ background: pageGradient(dark), minHeight: "100vh" }}>
       <AnnounceBar />
       <SiteHeader page={page} setPage={goPage} onGoCategory={goCategory} cartCount={cartCount} onOpenCart={() => setCartOpen(true)} onGoAdmin={goAdmin} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} session={session} loyaltyPoints={profile?.loyaltyPoints || 0} wishlistCount={wishlistIds.length} onOpenWishlist={() => setWishlistOpen(true)} onOpenAccount={() => setAccountOpen(true)} onOpenSearch={() => setPaletteOpen(true)} proStatus={profile?.proStatus} />
 
