@@ -91,6 +91,14 @@ const alpha = (hex, a) => {
   return `rgba(${r},${g},${b},${a})`;
 };
 
+// Fond en léger dégradé fluo (violet -> cyan), réutilisé sur toutes les sections "pleine largeur"
+// de la page d'accueil pour éviter l'alternance couleur/blanc pur remontée par l'utilisateur —
+// certaines sections gardaient l'ancien fond plat (p.bg / p.bg2) pendant que d'autres avaient déjà
+// reçu ce traitement lors du passage "plus de fluo". `base` reste le fond de repli (p.bg ou p.bg2
+// selon la section) pour garder la même hiérarchie claire/gris entre sections voisines.
+const sectionWash = (dark, base) =>
+  `linear-gradient(120deg, ${alpha(NEON.violet, dark ? 0.1 : 0.09)}, ${alpha(NEON.cyan, dark ? 0.08 : 0.07)}), ${base}`;
+
 // URLs propres par page/produit (voir "routing" dans Root) — un slug lisible ("ray-ban-aviator")
 // suivi d'un fragment de l'id réel pour rester unique même si deux produits ont un nom proche.
 const slugify = (str) =>
@@ -1219,7 +1227,7 @@ function ImageCorridor({ images, cards = 9, speed = 18, axis = 50, className = "
 }
 
 function ProductGalleryScroll({ products, setPage }) {
-  const { p } = useTheme();
+  const { p, dark } = useTheme();
   // Moins de cartes sur mobile (moins de nœuds animés en même temps) : même logique de prudence
   // perf que sur l'ancienne galerie, même si l'animation CSS pure est déjà bien plus légère.
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches);
@@ -1243,7 +1251,7 @@ function ProductGalleryScroll({ products, setPage }) {
   if (images.length === 0) return null; // catalogue vide — rien à montrer
 
   return (
-    <section className="relative" style={{ background: p.bg }}>
+    <section className="relative" style={{ background: sectionWash(dark, p.bg) }}>
       <div className="max-w-6xl mx-auto px-5 md:px-8 pt-16 pb-6 text-center relative z-10">
         <Eyebrow color={NEON.pink}>Le catalogue en un regard</Eyebrow>
         <h2 className="mtr-display text-3xl md:text-4xl font-bold" style={{ color: p.text }}>Toutes les montures défilent sous vos yeux</h2>
@@ -1373,7 +1381,7 @@ function CategoryStrip({ onGoCategory, categoryProducts }) {
   return (
     <section
       className="py-16 md:py-20"
-      style={{ background: dark ? `linear-gradient(120deg, ${alpha(NEON.violet, 0.1)}, ${alpha(NEON.cyan, 0.08)}), ${p.bg2}` : `linear-gradient(120deg, ${alpha(NEON.violet, 0.09)}, ${alpha(NEON.cyan, 0.07)}), ${p.bg2}` }}
+      style={{ background: sectionWash(dark, p.bg2) }}
     >
       <div ref={ref} className={`reveal ${visible ? "visible" : ""} max-w-6xl mx-auto px-5 md:px-8`}>
         <Eyebrow>Parcourir par catégorie</Eyebrow>
@@ -1428,7 +1436,7 @@ function CategoryStrip({ onGoCategory, categoryProducts }) {
 }
 
 function LensRevealBrands({ brands, setPage }) {
-  const { p } = useTheme();
+  const { p, dark } = useTheme();
   const [sectionRef, visible] = useReveal(0.3);
   const containerRef = useRef(null);
   const glyphElRef = useRef(null);
@@ -1510,7 +1518,7 @@ function LensRevealBrands({ brands, setPage }) {
   }, [visible, containerWidth, isDesktop]);
 
   return (
-    <section style={{ background: p.bg2 }}>
+    <section style={{ background: sectionWash(dark, p.bg2) }}>
       <div className="hairline" style={{ background: `linear-gradient(to right, transparent, ${p.border}, transparent)` }} />
       <div ref={sectionRef}>
         <div ref={containerRef} className="lens-reveal max-w-6xl mx-auto" style={{ height: 130 }}>
@@ -1667,7 +1675,7 @@ function StatItem({ value, suffix = "", label, active, color }) {
 }
 
 function TrustBand({ brands, products, orders }) {
-  const { p } = useTheme();
+  const { p, dark } = useTheme();
   const items = [
     { title: "Prix direct fournisseur", desc: "Aucun intermédiaire, aucun stock à financer : on répercute l'économie sur le prix, toute l'année.", accent: NEON.orange },
     { title: "Meilleur prix garanti", desc: "Trouvé moins cher ailleurs sur un modèle identique ? Contactez-nous, on vous rembourse la différence.", accent: NEON.yellow },
@@ -1681,7 +1689,7 @@ function TrustBand({ brands, products, orders }) {
   // stay true as the catalog and order history actually grow.
   const pairsShipped = orders.filter((o) => o.paymentStatus === "paid").reduce((s, o) => s + (o.items || []).reduce((sq, it) => sq + it.qty, 0), 0);
   return (
-    <section style={{ background: p.bg2, position: "relative", overflow: "hidden" }} className="py-20 md:py-24">
+    <section style={{ background: sectionWash(dark, p.bg2), position: "relative", overflow: "hidden" }} className="py-20 md:py-24">
       <SectionGlow variant="corners" />
       <div className="relative max-w-6xl mx-auto px-5 md:px-8">
         <div ref={ref} className="grid sm:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-5 mb-16">
@@ -2723,7 +2731,7 @@ function QuizBanner({ onOpen }) {
   const { p, dark } = useTheme();
   const [ref, visible] = useReveal(0.3);
   return (
-    <section style={{ background: p.bg2 }} className="py-14">
+    <section style={{ background: sectionWash(dark, p.bg2) }} className="py-14">
       <div ref={ref} className={`reveal ${visible ? "visible" : ""} max-w-6xl mx-auto px-5 md:px-8`}>
         <button
           onClick={onOpen}
