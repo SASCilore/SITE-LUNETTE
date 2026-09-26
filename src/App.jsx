@@ -99,18 +99,22 @@ const alpha = (hex, a) => {
 // englobe toute la page (et en laissant chaque section transparente en dessous), la transition
 // suit la descente complète du site sans aucun trait de coupure.
 const pageGradient = (dark) => {
-  const a = dark ? 0.16 : 0.11;
-  const b = dark ? 0.11 : 0.075;
+  // Intensité CONSTANTE sur tous les points du dégradé (pas d'alternance fort/faible) : une version
+  // précédente faisait alterner une opacité haute et une opacité basse à chaque étape, et ces creux
+  // redevenaient quasi blancs (surtout en thème clair sur un fond de base très clair) — exactement
+  // les bandes pâles remontées par retour utilisateur. Avec une seule opacité partout, seule la
+  // teinte tourne (violet -> bleu -> cyan -> ... ), jamais l'intensité, donc plus aucun creux visible.
+  const a = dark ? 0.17 : 0.12;
   return (
     `linear-gradient(180deg, ` +
     `${alpha(NEON.violet, a)} 0%, ` +
-    `${alpha(NEON.blue, b)} 11%, ` +
-    `${alpha(NEON.cyan, a)} 23%, ` +
-    `${alpha(NEON.violet, b)} 36%, ` +
+    `${alpha(NEON.blue, a)} 12%, ` +
+    `${alpha(NEON.cyan, a)} 25%, ` +
+    `${alpha(NEON.violet, a)} 38%, ` +
     `${alpha(NEON.pink, a)} 50%, ` +
-    `${alpha(NEON.orange, b)} 64%, ` +
-    `${alpha(NEON.yellow, a * 0.85)} 77%, ` +
-    `${alpha(NEON.cyan, b)} 89%, ` +
+    `${alpha(NEON.orange, a)} 62%, ` +
+    `${alpha(NEON.yellow, a)} 75%, ` +
+    `${alpha(NEON.cyan, a)} 88%, ` +
     `${alpha(NEON.blue, a)} 100%` +
     `), ${dark ? "#07080A" : "#FAFAF8"}`
   );
