@@ -1152,7 +1152,7 @@ function corridorKeyframes(dir, name, g) {
   return `@keyframes ${name}{${steps.join("")}}`;
 }
 
-function ImageCorridor({ images, cards = 9, speed = 18, axis = 55, className = "" }) {
+function ImageCorridor({ images, cards = 9, speed = 18, axis = 50, className = "" }) {
   const { p } = useTheme();
   const rid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const right = `ic-r-${rid}`;
@@ -1168,8 +1168,18 @@ function ImageCorridor({ images, cards = 9, speed = 18, axis = 55, className = "
     [right, left, card]
   );
 
+  // La plus grande carte (à la sortie) fait CORRIDOR_GEOMETRY.exitHeight de haut, en % de la
+  // largeur du conteneur. Avec une hauteur de bandeau fixe en pixels (l'ancien h-[420px]/[620px]),
+  // ce rectangle de cartes n'occupait qu'une bande étroite au milieu — d'où les gros espaces vides
+  // en haut et en bas remontés sur mobile. On calcule ici la hauteur juste nécessaire pour que la
+  // plus grande carte tienne, de part et d'autre de l'axe, avec une petite marge — via aspect-ratio
+  // plutôt qu'une hauteur fixe, donc ça s'ajuste automatiquement à la largeur réelle du bandeau,
+  // mobile comme desktop.
+  const marginFactor = Math.min(axis, 100 - axis) / 100;
+  const neededHeightPct = (CORRIDOR_GEOMETRY.exitHeight / 2 / marginFactor) * 1.08;
+
   return (
-    <div className={`relative overflow-hidden ${className}`} style={{ containerType: "inline-size" }}>
+    <div className={`relative overflow-hidden ${className}`} style={{ containerType: "inline-size", aspectRatio: `100 / ${neededHeightPct}` }}>
       <style>{css}</style>
       <div aria-hidden className="pointer-events-none absolute inset-0" style={{ perspective: `${CORRIDOR_GEOMETRY.perspective}cqw`, perspectiveOrigin: `50% ${axis}%` }}>
         <div className="absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
@@ -1245,8 +1255,7 @@ function ProductGalleryScroll({ products, setPage }) {
         images={images}
         cards={isDesktop ? 10 : 6}
         speed={isDesktop ? 20 : 16}
-        axis={55}
-        className="h-[420px] md:h-[620px] w-full"
+        className="w-full"
       />
     </section>
   );
