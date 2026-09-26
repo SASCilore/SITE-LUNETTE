@@ -1044,7 +1044,7 @@ function Hero({ setPage, featured, brands, onOpenProduct }) {
   };
 
   return (
-    <section ref={sectionRef} onMouseMove={onMove} onMouseLeave={() => setSpot((s) => ({ ...s, active: false }))} className="relative overflow-hidden" style={{ background: p.bg }}>
+    <section ref={sectionRef} onMouseMove={onMove} onMouseLeave={() => setSpot((s) => ({ ...s, active: false }))} className="relative overflow-hidden" style={{ background: sectionWash(dark, p.bg) }}>
       <div className="mesh-bg">
         <div className="mesh-blob" style={{ width: 440, height: 440, top: -140, left: -100, background: NEON.cyan, opacity: 0.3 * boost, mixBlendMode: blend }} />
         <div className="mesh-blob" style={{ width: 380, height: 380, bottom: -160, right: -80, background: NEON.pink, opacity: 0.3 * boost, mixBlendMode: blend, animationDelay: "-8s" }} />
@@ -1272,7 +1272,7 @@ function ProductGalleryScroll({ products, setPage }) {
 /* ---------------------------------- PUBLIC: LENS-SWEEP BRAND REVEAL ---------------------------------- */
 
 function ScrollGlassesStory({ featured }) {
-  const { p } = useTheme();
+  const { p, dark } = useTheme();
   const sectionRef = useRef(null);
   const progress = useScrollProgress(sectionRef);
 
@@ -1317,7 +1317,7 @@ function ScrollGlassesStory({ featured }) {
   );
 
   return (
-    <section ref={sectionRef} style={{ height: "320svh", position: "relative", background: p.bg }}>
+    <section ref={sectionRef} style={{ height: "320svh", position: "relative", background: sectionWash(dark, p.bg) }}>
       {/* "svh" (small viewport height) instead of "vh" — on mobile Safari/Chrome, "100vh" includes
          the space the address bar takes up when it's collapsed, so the pinned box's real height
          keeps jumping as the bar shows/hides while scrolling, opening up the gaps of blank space
@@ -1611,11 +1611,11 @@ function ProductCard({ product, brand, onOpen, index = 0, insights, isWishlisted
 // Generic horizontal product showcase, reused for "à la une", "récemment consulté" and
 // "bientôt indisponible" — avoids duplicating the card markup three times.
 function ProductRail({ title, eyebrow, eyebrowColor = NEON.pink, products, brands, onOpen, productInsights, wishlistIds, onToggleWishlist, holo = false }) {
-  const { p } = useTheme();
+  const { p, dark } = useTheme();
   const [headRef, headVisible] = useReveal(0.3);
   if (!products.length) return null;
   return (
-    <section style={{ background: p.bg }} className="py-20 md:py-24">
+    <section style={{ background: sectionWash(dark, p.bg) }} className="py-20 md:py-24">
       <div className="max-w-6xl mx-auto px-5 md:px-8">
         <div ref={headRef} className={`reveal ${headVisible ? "visible" : ""} flex items-end justify-between mb-10`}>
           <div>
@@ -1713,9 +1713,9 @@ function TrustBand({ brands, products, orders }) {
 }
 
 function Footer({ setPage, onGoAdmin }) {
-  const { p } = useTheme();
+  const { p, dark } = useTheme();
   return (
-    <footer style={{ background: p.bg }} className="pt-14 pb-8 border-t" >
+    <footer style={{ background: sectionWash(dark, p.bg) }} className="pt-14 pb-8 border-t" >
       <div className="max-w-6xl mx-auto px-5 md:px-8 pt-10 grid md:grid-cols-4 gap-10">
         <div>
           <Logo size={22} />
@@ -1753,7 +1753,7 @@ function Footer({ setPage, onGoAdmin }) {
 /* ---------------------------------- PUBLIC: CATALOGUE ---------------------------------- */
 
 function CatalogPage({ products, brands, onOpen, initialFilter, productInsights, wishlistIds, onToggleWishlist }) {
-  const { p } = useTheme();
+  const { p, dark } = useTheme();
   const [query, setQuery] = useState("");
   const [brandFilter, setBrandFilter] = useState([]);
   const [category, setCategory] = useState(initialFilter?.category || "Tous");
@@ -1845,7 +1845,7 @@ function CatalogPage({ products, brands, onOpen, initialFilter, productInsights,
   );
 
   return (
-    <div style={{ background: p.bg, minHeight: "60vh", position: "relative", overflow: "hidden" }} className="py-12">
+    <div style={{ background: sectionWash(dark, p.bg), minHeight: "60vh", position: "relative", overflow: "hidden" }} className="py-12">
       <SectionGlow />
       <div className="relative max-w-6xl mx-auto px-5 md:px-8">
         <div className="flex items-center justify-between mb-8">
@@ -1911,7 +1911,7 @@ function CatalogPage({ products, brands, onOpen, initialFilter, productInsights,
 function BrandsPage({ brands, products, setPage }) {
   const { p, dark } = useTheme();
   return (
-    <div style={{ background: p.bg, minHeight: "60vh", position: "relative", overflow: "hidden" }} className="py-12">
+    <div style={{ background: sectionWash(dark, p.bg), minHeight: "60vh", position: "relative", overflow: "hidden" }} className="py-12">
       <SectionGlow variant="corners" />
       <div className="relative max-w-6xl mx-auto px-5 md:px-8">
         <Eyebrow color={NEON.blue}>Marques référencées</Eyebrow>
@@ -1979,7 +1979,7 @@ function ProApplicationForm({ initial, submitting, error, onSubmit }) {
 }
 
 function ProPage({ session, profile, products, brands, onAddToCart, onRequestPro, onOpenAccount }) {
-  const { p } = useTheme();
+  const { p, dark } = useTheme();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -1998,7 +1998,7 @@ function ProPage({ session, profile, products, brands, onAddToCart, onRequestPro
   const proProducts = products.filter((pr) => pr.proPrice !== null && pr.proPrice !== undefined);
 
   return (
-    <div style={{ background: p.bg, minHeight: "60vh", position: "relative", overflow: "hidden" }} className="py-12">
+    <div style={{ background: sectionWash(dark, p.bg), minHeight: "60vh", position: "relative", overflow: "hidden" }} className="py-12">
       <SectionGlow />
       <div className="relative max-w-3xl mx-auto px-5 md:px-8">
         <Eyebrow color={NEON.blue}>Espace professionnel</Eyebrow>
@@ -2079,9 +2079,9 @@ function ProPage({ session, profile, products, brands, onAddToCart, onRequestPro
 }
 
 function AboutPage({ setPage }) {
-  const { p } = useTheme();
+  const { p, dark } = useTheme();
   return (
-    <div style={{ background: p.bg, minHeight: "60vh", position: "relative", overflow: "hidden" }} className="py-12">
+    <div style={{ background: sectionWash(dark, p.bg), minHeight: "60vh", position: "relative", overflow: "hidden" }} className="py-12">
       <SectionGlow />
       <div className="relative max-w-3xl mx-auto px-5 md:px-8">
         <Eyebrow color={NEON.lime}>À propos de go2glass</Eyebrow>
@@ -4852,7 +4852,7 @@ function LoadingScreen() {
 /* ---------------------------------- ROOT (site + admin) ---------------------------------- */
 
 function Root() {
-  const { p } = useTheme();
+  const { p, dark } = useTheme();
   const [mode, setMode] = useState("site");
   const [page, setPage] = useState("home");
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -5273,7 +5273,7 @@ function Root() {
   }
 
   return (
-    <div className="mtr grain" style={{ background: p.bg, minHeight: "100vh" }}>
+    <div className="mtr grain" style={{ background: sectionWash(dark, p.bg), minHeight: "100vh" }}>
       <AnnounceBar />
       <SiteHeader page={page} setPage={goPage} onGoCategory={goCategory} cartCount={cartCount} onOpenCart={() => setCartOpen(true)} onGoAdmin={goAdmin} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} session={session} loyaltyPoints={profile?.loyaltyPoints || 0} wishlistCount={wishlistIds.length} onOpenWishlist={() => setWishlistOpen(true)} onOpenAccount={() => setAccountOpen(true)} onOpenSearch={() => setPaletteOpen(true)} proStatus={profile?.proStatus} />
 
