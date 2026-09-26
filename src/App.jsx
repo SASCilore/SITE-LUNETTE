@@ -1,13 +1,9 @@
-import React, { useState, useMemo, useRef, useEffect, useContext, createContext } from "react";
+import React, { useState, useMemo, useRef, useEffect, useContext, createContext, useId } from "react";
 // Note: "three" is intentionally NOT statically imported here — it's a large 3D library only
 // needed by the Glasses3D fallback (shown when a product has no real photo, which is now the
 // rare case), so it's loaded on demand inside Glasses3D's effect instead of shipping it to every
 // visitor's initial page load.
 import Papa from "papaparse";
-// "motion" (successor to framer-motion, same API under `motion/react`) drives the scroll-linked
-// 3D gallery below the hero — real product photos, not the stock Unsplash images from the demo
-// this was adapted from.
-import { motion, useScroll, useTransform, useMotionValue } from "motion/react";
 // Note: "xlsx" is intentionally NOT statically imported here — it's a large library only ever
 // needed by the admin's Excel import, so it's loaded on demand (see handleFile below) instead of
 // shipping it to every visitor of the public site.
@@ -1108,41 +1104,114 @@ function Hero({ setPage, featured, brands, onOpenProduct }) {
   );
 }
 
-/* ---------------------------------- PUBLIC: SCROLL GALLERY (3D parallax columns) ---------------------------------- */
-// Adapted from a 21st.dev community component ("animated-gallery"): same scroll-linked 3D
-// perspective + per-column parallax mechanic, rebuilt without Next.js/shadcn/Radix (this project
-// is plain Vite + React) and filled with real product photos instead of the demo's stock
-// Unsplash images — a random sample, changes on refresh, exactly like the brand strip below it.
+/* ---------------------------------- PUBLIC: PRODUCT CORRIDOR (bandeau 3D auto-play) ---------------------------------- */
+// Remplace l'ancienne galerie à 3 colonnes liée au scroll : perspective + rotation recalculées en
+// JS à chaque frame de scroll, la cause du lag mobile déjà corrigé une fois sur cette section.
+// Ce nouveau bandeau tourne tout seul, en boucle, en pur CSS (@keyframes + transform 3D) : c'est
+// le compositeur du navigateur qui anime, sans recalcul JS pendant le scroll — nettement plus
+// léger. Adapté d'un composant communautaire 21st.dev ("image-stream-hero"), réécrit sans
+// TypeScript/shadcn (ce projet est en Vite + JS pur) et rempli avec de vraies photos produits au
+// lieu des images de stock de la démo d'origine.
+//
+// Le principe (deux rails de cartes qui foncent vers l'écran) : la perspective seule donne
+// l'impression de deux animations — en s'approchant une carte grossit ET s'écarte du centre,
+// parce que la projection met à l'échelle position et taille par le même facteur. Trois réglages
+// évitent les défauts visuels classiques de ce genre d'effet : la taille apparente croît de façon
+// géométrique (sinon les cartes proches se déchirent visuellement) ; les rails s'écartent vite
+// puis se stabilisent (`fan` > 1, sinon le ruban ne fait jamais ce "coude" caractéristique) ; et
+// chaque carte naît de l'autre côté de l'axe pour que le centre ne se vide jamais entre deux
+// apparitions.
 
-function GalleryCol({ photos, yFrom, yTo, scrollYProgress, offsetClass = "" }) {
+const CORRIDOR_GEOMETRY = {
+  perspective: 30,
+  cardWidth: 18,
+  cardHeight: 25,
+  cardRadius: 0.9,
+  birthHeight: 2.6,
+  exitHeight: 46,
+  railBirth: -11,
+  railExit: 44,
+  fan: 3.3,
+  turnBirth: 6,
+  turnExit: 28,
+  stops: 24,
+};
+
+// Échantillonne la trajectoire une fois pour tracer les vraies keyframes CSS (au lieu d'une simple
+// interpolation linéaire qui ferait des cartes désynchronisées).
+function corridorKeyframes(dir, name, g) {
+  const steps = [];
+  for (let s = 0; s <= g.stops; s++) {
+    const u = s / g.stops;
+    const scale = (g.birthHeight / g.cardHeight) * Math.pow(g.exitHeight / g.birthHeight, u);
+    const z = g.perspective * (1 - 1 / scale);
+    const rail = g.railExit - (g.railExit - g.railBirth) * Math.pow(1 - u, g.fan);
+    const turn = g.turnBirth + (g.turnExit - g.turnBirth) * u;
+    steps.push(`${(u * 100).toFixed(2)}%{transform:translate3d(${(dir * rail).toFixed(2)}cqw,0,${z.toFixed(2)}cqw) rotateY(${(-dir * turn).toFixed(2)}deg)}`);
+  }
+  return `@keyframes ${name}{${steps.join("")}}`;
+}
+
+function ImageCorridor({ images, cards = 9, speed = 18, axis = 55, className = "" }) {
   const { p } = useTheme();
-  const y = useTransform(scrollYProgress, [0.5, 1], [yFrom, yTo]);
+  const rid = useId().replace(/[^a-zA-Z0-9]/g, "");
+  const right = `ic-r-${rid}`;
+  const left = `ic-l-${rid}`;
+  const card = `ic-c-${rid}`;
+
+  const css = useMemo(
+    () =>
+      `${corridorKeyframes(1, right, CORRIDOR_GEOMETRY)}${corridorKeyframes(-1, left, CORRIDOR_GEOMETRY)}` +
+      // En pause plutôt que désactivée : chaque carte a déjà un délai négatif (voir plus bas), donc
+      // la mettre en pause la fige en pleine trajectoire au lieu de tout ramener sur l'axe.
+      `@media(prefers-reduced-motion:reduce){.${card}{animation-play-state:paused}}`,
+    [right, left, card]
+  );
+
   return (
-    <motion.div className={`relative flex w-full flex-col gap-3 ${offsetClass}`} style={{ y }}>
-      {photos.map((photo, i) => (
-        <div key={i} className="aspect-square w-full rounded-2xl p-4 flex items-center justify-center" style={{ background: p.bg3, border: `1px solid ${p.border}` }}>
-          <img src={photo} alt="" className="max-w-full max-h-full object-contain" loading="lazy" />
+    <div className={`relative overflow-hidden ${className}`} style={{ containerType: "inline-size" }}>
+      <style>{css}</style>
+      <div aria-hidden className="pointer-events-none absolute inset-0" style={{ perspective: `${CORRIDOR_GEOMETRY.perspective}cqw`, perspectiveOrigin: `50% ${axis}%` }}>
+        <div className="absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
+          {[right, left].map((name) =>
+            Array.from({ length: cards }, (_, i) => {
+              const img = images[i % Math.max(images.length, 1)];
+              return (
+                <div
+                  key={`${name}-${i}`}
+                  className={`${card} absolute overflow-hidden flex items-center justify-center p-3`}
+                  style={{
+                    left: "50%",
+                    top: `${axis}%`,
+                    width: `${CORRIDOR_GEOMETRY.cardWidth}cqw`,
+                    height: `${CORRIDOR_GEOMETRY.cardHeight}cqw`,
+                    marginLeft: `${-CORRIDOR_GEOMETRY.cardWidth / 2}cqw`,
+                    marginTop: `${-CORRIDOR_GEOMETRY.cardHeight / 2}cqw`,
+                    borderRadius: `${CORRIDOR_GEOMETRY.cardRadius}cqw`,
+                    background: p.bg3,
+                    border: `1px solid ${p.border}`,
+                    animation: `${name} ${speed}s linear infinite`,
+                    // Délai négatif : chaque carte démarre déjà en plein vol, pour que le corridor
+                    // soit plein dès la première frame au lieu de se remplir progressivement.
+                    animationDelay: `${-(i * speed) / cards}s`,
+                    backfaceVisibility: "hidden",
+                  }}
+                >
+                  {img ? <img src={img} alt="" loading="lazy" decoding="async" className="max-w-full max-h-full object-contain" draggable={false} /> : null}
+                </div>
+              );
+            })
+          )}
         </div>
-      ))}
-    </motion.div>
+      </div>
+    </div>
   );
 }
 
 function ProductGalleryScroll({ products, setPage }) {
   const { p } = useTheme();
-  const scrollRef = useRef(null);
-  const { scrollYProgress } = useScroll({ target: scrollRef });
-  const rotateXDesktop = useTransform(scrollYProgress, [0, 0.5], [60, 0]);
-  const scaleDesktop = useTransform(scrollYProgress, [0.5, 0.9], [1.15, 1]);
-  // Valeurs fixes pour mobile (hooks appelés inconditionnellement, mais pas branchés sur le scroll)
-  const rotateXFixed = useMotionValue(0);
-  const scaleFixed = useMotionValue(1);
-
-  // C'est ce premier défilement (perspective 3D + rotation de toute la grille recalculée à
-  // chaque frame, sur 12 photos) qui était signalé comme saccadé sur mobile : la 3D composée est
-  // lourde pour le GPU des téléphones. Sur mobile on retire la perspective/rotation et on garde
-  // seulement le léger parallax vertical des colonnes (un simple translateY, bien moins coûteux) ;
-  // desktop conserve l'effet complet.
+  // Moins de cartes sur mobile (moins de nœuds animés en même temps) : même logique de prudence
+  // perf que sur l'ancienne galerie, même si l'animation CSS pure est déjà bien plus légère.
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches);
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 768px)");
@@ -1150,44 +1219,35 @@ function ProductGalleryScroll({ products, setPage }) {
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, []);
-  const rotateX = isDesktop ? rotateXDesktop : rotateXFixed;
-  const scale = isDesktop ? scaleDesktop : scaleFixed;
 
-  // Three columns of real product photos (photo #1 of eligible products), picked once per mount
-  // so it stays fixed while scrolling and changes again on the next visit/refresh.
-  const columnsRef = useRef(null);
-  if (columnsRef.current === null) {
+  // Échantillon de photos produit, tiré une fois au montage — comme l'ancienne galerie, ça change
+  // au prochain refresh/visite plutôt qu'en continu.
+  const imagesRef = useRef(null);
+  if (imagesRef.current === null) {
     const eligible = products.filter((pr) => pr.photos?.[0]);
     const shuffled = [...eligible].sort(() => Math.random() - 0.5);
-    const pick = shuffled.slice(0, 12).map((pr) => pr.photos[0]);
-    while (pick.length > 0 && pick.length < 12) pick.push(pick[pick.length % Math.max(1, shuffled.length)]);
-    columnsRef.current = [pick.slice(0, 4), pick.slice(4, 8), pick.slice(8, 12)];
+    imagesRef.current = shuffled.slice(0, 12).map((pr) => pr.photos[0]);
   }
-  const [col1, col2, col3] = columnsRef.current;
+  const images = imagesRef.current;
 
-  if (col1.length === 0) return null; // no product photos yet (empty catalog) — nothing to show
+  if (images.length === 0) return null; // catalogue vide — rien à montrer
 
   return (
     <section className="relative" style={{ background: p.bg }}>
       <div className="max-w-6xl mx-auto px-5 md:px-8 pt-16 pb-6 text-center relative z-10">
         <Eyebrow color={NEON.pink}>Le catalogue en un regard</Eyebrow>
-        <h2 className="mtr-display text-3xl md:text-4xl font-bold" style={{ color: p.text }}>Toutes les montures, un seul geste : scroller</h2>
+        <h2 className="mtr-display text-3xl md:text-4xl font-bold" style={{ color: p.text }}>Toutes les montures défilent sous vos yeux</h2>
         <button onClick={() => setPage("catalogue")} className="mt-4 text-sm font-semibold inline-flex items-center gap-1.5" style={{ color: PRIMARY }}>
           Voir tout le catalogue <ArrowRight size={14} />
         </button>
       </div>
-      <div ref={scrollRef} className="relative h-[220svh]" style={isDesktop ? { perspective: "1000px", perspectiveOrigin: "center top" } : undefined}>
-        <div className="sticky left-0 top-0 h-svh w-full overflow-hidden" style={isDesktop ? { perspective: "1000px", transformStyle: "preserve-3d" } : undefined}>
-          <motion.div
-            className="relative grid size-full grid-cols-3 gap-3 md:gap-4 max-w-5xl mx-auto px-4"
-            style={isDesktop ? { rotateX, scale, transformStyle: "preserve-3d" } : { willChange: "transform" }}
-          >
-            <GalleryCol photos={col1} yFrom="-10%" yTo="2%" scrollYProgress={scrollYProgress} offsetClass="-mt-6 md:-mt-10" />
-            <GalleryCol photos={col2} yFrom="15%" yTo="5%" scrollYProgress={scrollYProgress} offsetClass="mt-6 md:mt-10" />
-            <GalleryCol photos={col3} yFrom="-10%" yTo="2%" scrollYProgress={scrollYProgress} offsetClass="-mt-6 md:-mt-10" />
-          </motion.div>
-        </div>
-      </div>
+      <ImageCorridor
+        images={images}
+        cards={isDesktop ? 10 : 6}
+        speed={isDesktop ? 20 : 16}
+        axis={55}
+        className="h-[420px] md:h-[620px] w-full"
+      />
     </section>
   );
 }
