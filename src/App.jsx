@@ -4571,6 +4571,257 @@ function AdminOrders({ orders, setOrders, products }) {
   );
 }
 
+/* ---------------------------------- LOADING SCREEN (shader radial, teinté fluo go2glass) ---------------------------------- */
+// Adapté d'un composant communautaire 21st.dev ("raidal-2") : un shader WebGL2 plein écran qui
+// dessine un motif radial animé, en boucle, en calculant lui-même chaque pixel sur le GPU (pas
+// d'images à charger — un simple triangle plein écran + un fragment shader). Réécrit sans
+// TypeScript (ce projet est en Vite + JS pur).
+//
+// Le shader d'origine produisait un dégradé arc-en-ciel générique. Plutôt que retoucher à la main
+// les constantes de phase (fragile, difficile à prévoir), la teinte est recalculée à la toute fin
+// du shader, en faisant tourner un vrai dégradé cyclique à 6 couleurs — bleu, cyan, violet, rose,
+// orange, jaune, les mêmes NEON.* que le reste du site — autour du centre et selon la luminosité
+// du motif d'origine, plutôt qu'un dégradé à 2-3 couleurs qui aurait viré au monochrome. Le
+// multiplicateur sur l'angle (voir `ang * 1.0` plus bas) doit rester un nombre entier : c'est ce
+// qui permet au dégradé de boucler exactement là où l'angle repasse de -π à +π (sans quoi on
+// obtient une coupure nette et visible sur la moitié gauche de l'écran — repéré et corrigé en
+// testant ce rendu avant livraison). Le mouvement et la forme du motif restent ceux du composant
+// d'origine, seule la palette change.
+const RADIAL_SHADER_SRC = `#version 300 es
+precision highp float;
+
+out vec4 fragColor;
+in vec2 v_uv;
+
+uniform vec3  iResolution;   // (width, height, dpr)
+uniform float iTime;         // seconds
+uniform int   iFrame;        // frame counter
+uniform vec4  iMouse;        // (x, y, L, R)
+
+// Roue de couleurs fluo go2glass, cyclique (le dernier point rejoint le premier).
+vec3 fluoWheel(float u) {
+    vec3 c0 = vec3(0.239, 0.427, 1.000); // NEON.blue   #3D6DFF
+    vec3 c1 = vec3(0.000, 0.941, 1.000); // NEON.cyan   #00F0FF
+    vec3 c2 = vec3(0.702, 0.420, 1.000); // NEON.violet #B36BFF
+    vec3 c3 = vec3(1.000, 0.180, 0.533); // NEON.pink   #FF2E88
+    vec3 c4 = vec3(1.000, 0.541, 0.239); // NEON.orange #FF8A3D
+    vec3 c5 = vec3(0.957, 1.000, 0.239); // NEON.yellow #F4FF3D
+    float seg = fract(u) * 6.0;
+    float idx = floor(seg);
+    float f = fract(seg);
+    if (idx < 1.0) return mix(c0, c1, f);
+    if (idx < 2.0) return mix(c1, c2, f);
+    if (idx < 3.0) return mix(c2, c3, f);
+    if (idx < 4.0) return mix(c3, c4, f);
+    if (idx < 5.0) return mix(c4, c5, f);
+    return mix(c5, c0, f);
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{
+    vec2  r  = iResolution.xy;
+    float t  = iTime;
+    vec3  FC = vec3(fragCoord, t);
+    vec4  o  = vec4(0.0);
+
+    vec2 p = FC.xy - r * 0.5;
+
+    for (float i, a; i++ < 9.0; )
+    {
+        a = (i * i) / 80.0 - length(p) / r.y;
+        float denom = max(a, -a * 3.0) + 2.0 / r.y;
+
+        a = cos(i - t);
+        float edge0 = a;
+        float edge1 = 2.0;
+        a = atan(p.y, p.x) + a + i * i;
+        float sm = smoothstep(edge0, edge1, cos(a));
+
+        o += 0.03 / denom * sm * (1.2 + sin(a + i + vec4(0.0, 2.0, 4.0, 0.0)));
+    }
+
+    o = tanh(o);
+
+    // Reteinte fluo go2glass : luminosité du motif d'origine + angle autour du centre -> position
+    // sur la roue de couleurs ci-dessus, qui tourne doucement dans le temps.
+    float l = clamp(dot(o.rgb, vec3(0.299, 0.587, 0.114)), 0.0, 1.0);
+    float ang = atan(p.y, p.x) / 6.2831853;
+    float u = l * 0.5 + ang * 1.0 + t * 0.04;
+    vec3 tint = fluoWheel(u);
+    vec3 col = tint * (0.32 + l * 0.95);
+
+    fragColor = vec4(col, 1.0);
+}
+
+void main(){
+  mainImage(fragColor, gl_FragCoord.xy);
+}
+`;
+
+const RADIAL_VERT_SRC = `#version 300 es
+precision highp float;
+layout(location=0) in vec2 a_pos;
+out vec2 v_uv;
+void main(){
+  v_uv = a_pos * 0.5 + 0.5;
+  gl_Position = vec4(a_pos, 0.0, 1.0);
+}
+`;
+
+function safeCompileShader(gl, type, src) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  const ok = gl.getShaderParameter(sh, gl.COMPILE_STATUS);
+  const log = gl.getShaderInfoLog(sh) || "";
+  return { shader: ok ? sh : null, log };
+}
+function safeLinkProgram(gl, vs, fs) {
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
+  gl.linkProgram(prog);
+  const ok = gl.getProgramParameter(prog, gl.LINK_STATUS);
+  const log = gl.getProgramInfoLog(prog) || "";
+  return { program: ok ? prog : null, log };
+}
+
+function RadialShaderCanvas({ pixelRatio }) {
+  const canvasRef = useRef(null);
+  const rafRef = useRef(null);
+  const startRef = useRef(0);
+  const frameRef = useRef(0);
+  const mouseRef = useRef({ x: 0, y: 0, l: 0, r: 0 });
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const gl = canvas.getContext("webgl2", { premultipliedAlpha: false });
+    if (!gl) return; // pas de WebGL2 (vieux navigateur) : le fond reste simplement noir, pas bloquant
+
+    let disposed = false;
+
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+    const { shader: vs, log: vsLog } = safeCompileShader(gl, gl.VERTEX_SHADER, RADIAL_VERT_SRC);
+    if (!vs) { console.error("Vertex compile error:", vsLog); return; }
+    const { shader: fs, log: fsLog } = safeCompileShader(gl, gl.FRAGMENT_SHADER, RADIAL_SHADER_SRC);
+    if (!fs) { console.error("Fragment compile error:", fsLog); gl.deleteShader(vs); return; }
+    const { program, log: linkLog } = safeLinkProgram(gl, vs, fs);
+    gl.deleteShader(vs); gl.deleteShader(fs);
+    if (!program) { console.error("Program link error:", linkLog); return; }
+
+    const uResolution = gl.getUniformLocation(program, "iResolution");
+    const uTime = gl.getUniformLocation(program, "iTime");
+    const uFrame = gl.getUniformLocation(program, "iFrame");
+    const uMouse = gl.getUniformLocation(program, "iMouse");
+
+    const getDpr = () => {
+      const sys = window.devicePixelRatio || 1;
+      return Math.max(1, Math.min(2, pixelRatio ?? sys));
+    };
+
+    let resizeScheduled = false;
+    function applySize() {
+      resizeScheduled = false;
+      if (disposed) return;
+      const dpr = getDpr();
+      const cssW = Math.max(1, canvas.clientWidth | 0);
+      const cssH = Math.max(1, canvas.clientHeight | 0);
+      const w = Math.max(1, Math.floor(cssW * dpr));
+      const h = Math.max(1, Math.floor(cssH * dpr));
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w; canvas.height = h;
+        gl.viewport(0, 0, w, h);
+      }
+    }
+    function scheduleSize() {
+      if (resizeScheduled) return;
+      resizeScheduled = true;
+      requestAnimationFrame(applySize);
+    }
+    const ro = new ResizeObserver(scheduleSize);
+    ro.observe(canvas);
+    scheduleSize();
+
+    function onContextLost(ev) { ev.preventDefault(); if (rafRef.current) cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    function onContextRestored() { scheduleSize(); startRef.current = performance.now(); frameRef.current = 0; if (!rafRef.current) rafRef.current = requestAnimationFrame(tick); }
+    canvas.addEventListener("webglcontextlost", onContextLost);
+    canvas.addEventListener("webglcontextrestored", onContextRestored);
+
+    startRef.current = performance.now();
+    frameRef.current = 0;
+
+    function tick(now) {
+      if (disposed) return;
+      if (gl.isContextLost()) { rafRef.current = requestAnimationFrame(tick); return; }
+
+      const t = (now - startRef.current) / 1000;
+      frameRef.current += 1;
+
+      try {
+        gl.useProgram(program);
+        if (resizeScheduled) applySize();
+        const dpr = getDpr();
+        const w = canvas.width, h = canvas.height;
+
+        uResolution && gl.uniform3f(uResolution, w, h, dpr);
+        uTime && gl.uniform1f(uTime, t);
+        uFrame && gl.uniform1i(uFrame, frameRef.current);
+        if (uMouse) {
+          const m = mouseRef.current;
+          gl.uniform4f(uMouse, m.x * dpr, m.y * dpr, m.l, m.r);
+        }
+
+        gl.bindVertexArray(vao);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      } catch (err) {
+        console.error(err?.message ?? String(err));
+      }
+
+      rafRef.current = requestAnimationFrame(tick);
+    }
+    rafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      disposed = true;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      canvas.removeEventListener("webglcontextlost", onContextLost);
+      canvas.removeEventListener("webglcontextrestored", onContextRestored);
+      ro.disconnect();
+      try { gl.deleteBuffer(vbo); } catch {}
+      try { gl.deleteVertexArray(vao); } catch {}
+    };
+  }, []);
+
+  return (
+    <div style={{ position: "absolute", inset: 0 }}>
+      <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block" }} />
+    </div>
+  );
+}
+
+function LoadingScreen() {
+  return (
+    <div style={{ position: "fixed", inset: 0, width: "100vw", height: "100dvh", background: "#050507", overflow: "hidden", zIndex: 9999 }}>
+      <RadialShaderCanvas />
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 pointer-events-none">
+        <div style={{ filter: `drop-shadow(0 0 22px ${alpha(NEON.cyan, 0.55)}) drop-shadow(0 0 40px ${alpha(NEON.violet, 0.35)})` }}>
+          <Logo size={44} forceDark />
+        </div>
+        <div className="mtr-mono text-[11px] uppercase tracking-[0.3em] animate-pulse" style={{ color: alpha("#FFFFFF", 0.7) }}>
+          Chargement…
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------------------------- ROOT (site + admin) ---------------------------------- */
 
 function Root() {
@@ -4950,11 +5201,7 @@ function Root() {
   const handleLogout = async () => { await signOut(); };
 
   if (loading || !authChecked) {
-    return (
-      <div className="mtr grain flex items-center justify-center" style={{ background: p.bg, minHeight: "100vh" }}>
-        <Loader2 size={28} className="animate-spin" style={{ color: PRIMARY }} />
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   if (loadError) {
