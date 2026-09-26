@@ -104,18 +104,27 @@ const pageGradient = (dark) => {
   // redevenaient quasi blancs (surtout en thème clair sur un fond de base très clair) — exactement
   // les bandes pâles remontées par retour utilisateur. Avec une seule opacité partout, seule la
   // teinte tourne (violet -> bleu -> cyan -> ... ), jamais l'intensité, donc plus aucun creux visible.
+  //
+  // Correctif supplémentaire : le jaune et l'orange fluo sont des teintes naturellement très claires
+  // (proche du blanc en luminosité perçue). À la même opacité que le violet/cyan/rose, ils redevenaient
+  // quasi invisibles sur le fond clair (#FAFAF8) — exactement la zone encore perçue comme "blanche"
+  // (autour de la bande de marques, ~70% de la descente de page). `c(hex, mult)` compense en boostant
+  // leur opacité — jamais en la réduisant ailleurs — donc chaque teinte reste bien visible partout,
+  // sans recréer de creux.
   const a = dark ? 0.17 : 0.12;
+  const cap = dark ? 0.34 : 0.24;
+  const c = (hex, mult = 1) => alpha(hex, Math.min(a * mult, cap));
   return (
     `linear-gradient(180deg, ` +
-    `${alpha(NEON.violet, a)} 0%, ` +
-    `${alpha(NEON.blue, a)} 12%, ` +
-    `${alpha(NEON.cyan, a)} 25%, ` +
-    `${alpha(NEON.violet, a)} 38%, ` +
-    `${alpha(NEON.pink, a)} 50%, ` +
-    `${alpha(NEON.orange, a)} 62%, ` +
-    `${alpha(NEON.yellow, a)} 75%, ` +
-    `${alpha(NEON.cyan, a)} 88%, ` +
-    `${alpha(NEON.blue, a)} 100%` +
+    `${c(NEON.violet)} 0%, ` +
+    `${c(NEON.blue)} 12%, ` +
+    `${c(NEON.cyan)} 25%, ` +
+    `${c(NEON.violet)} 38%, ` +
+    `${c(NEON.pink)} 50%, ` +
+    `${c(NEON.orange, 1.5)} 62%, ` +
+    `${c(NEON.yellow, 2.1)} 75%, ` +
+    `${c(NEON.cyan)} 88%, ` +
+    `${c(NEON.blue)} 100%` +
     `), ${dark ? "#07080A" : "#FAFAF8"}`
   );
 };
