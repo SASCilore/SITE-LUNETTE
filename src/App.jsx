@@ -399,8 +399,19 @@ function GlobalStyle() {
       }
       .lens-glyph-travel { position: absolute; left: 0; top: 50%; width: 130px; height: 60px; will-change: transform; filter: drop-shadow(0 0 16px rgba(0,240,255,.55)) drop-shadow(0 0 8px rgba(255,46,136,.35)); }
 
+      /* Bandeau de marques mobile : un défilement continu en pur CSS (transform, accéléré GPU),
+         beaucoup plus léger que l'effet "lunette qui balaie le texte" du desktop (qui recalcule un
+         masque CSS à chaque frame en JS) — d'où le choix historique de garder le mobile statique.
+         La liste est dupliquée une fois : en boucle sur une largeur de -50%, la 2e copie prend
+         exactement le relais de la 1re, donc le défilement est parfaitement continu, sans à-coup ni
+         saut visible au raccord. */
+      .lens-marquee-viewport { position: relative; overflow: hidden; }
+      .lens-marquee-track { display: flex; align-items: center; gap: 3rem; width: max-content; animation: lensMarquee linear infinite; animation-duration: var(--marquee-duration, 22s); }
+      .lens-marquee-track span { font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: 0.12em; font-weight: 600; font-size: clamp(1rem, 2.6vw, 1.55rem); white-space: nowrap; }
+      @keyframes lensMarquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
       @media (prefers-reduced-motion: reduce) {
-        .reveal, .lens-fill, .mesh-blob, .glint, .btn-magnet, .card-lift, .bar-fill, .holo-fill, .chroma, .btn-neon, .lens-row-neon, .lens-glyph-travel { transition: none !important; animation: none !important; }
+        .reveal, .lens-fill, .mesh-blob, .glint, .btn-magnet, .card-lift, .bar-fill, .holo-fill, .chroma, .btn-neon, .lens-row-neon, .lens-glyph-travel, .lens-marquee-track { transition: none !important; animation: none !important; }
         .reveal { opacity: 1; transform: none; }
       }
     `}</style>
@@ -1550,29 +1561,41 @@ function LensRevealBrands({ brands, setPage }) {
   return (
     <section style={{ background: "transparent" }}>
       <div className="hairline" style={{ background: `linear-gradient(to right, transparent, ${p.border}, transparent)` }} />
-      <div ref={sectionRef}>
-        <div ref={containerRef} className="lens-reveal max-w-6xl mx-auto" style={{ height: 130 }}>
-          <div className="lens-row">
-            {displayBrands.map((b) => (
-              // Desktop keeps this layer faint (26% opacity) on purpose — the traveling glasses
-              // glyph is what "reveals" it at full brightness as it sweeps past. Mobile skips that
-              // sweep entirely (see isDesktop above), so it needs to be legible on its own — that
-              // 26%-opacity layer alone reading as "no text at all" is exactly what was reported.
-              <span key={b.id} onClick={() => setPage("catalogue")} className="cursor-pointer" style={{ color: isDesktop ? alpha(p.text, 0.26) : alpha(p.text, 0.82) }}>{b.name}</span>
+      {isDesktop ? (
+        <div ref={sectionRef}>
+          <div ref={containerRef} className="lens-reveal max-w-6xl mx-auto" style={{ height: 130 }}>
+            <div className="lens-row">
+              {displayBrands.map((b) => (
+                // Desktop keeps this layer faint (26% opacity) on purpose — the traveling glasses
+                // glyph is what "reveals" it at full brightness as it sweeps past.
+                <span key={b.id} onClick={() => setPage("catalogue")} className="cursor-pointer" style={{ color: alpha(p.text, 0.26) }}>{b.name}</span>
+              ))}
+            </div>
+            {visible && (
+              <>
+                <div ref={maskElRef} className="lens-row lens-row-masked pointer-events-none">
+                  {displayBrands.map((b) => <span key={b.id}>{b.name}</span>)}
+                </div>
+                <div ref={glyphElRef} className="lens-glyph-travel" style={{ left: 0, top: "50%", transform: "translate(-100px,-50%)" }}>
+                  <GlassesGlyph shape="square" tint={NEON.cyan} stroke="rgba(255,255,255,0.9)" />
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : (
+        // Mobile : plus de liste statique — un défilement continu en CSS pur (voir .lens-marquee-*
+        // plus haut), demandé par retour utilisateur ("ce bandeau est fixe"). La liste est dupliquée
+        // pour boucler sans coupure ; durée proportionnelle au nombre de marques pour garder une
+        // vitesse de défilement constante quel que soit le nombre de marques tirées au sort.
+        <div className="lens-marquee-viewport max-w-6xl mx-auto" style={{ height: 60 }}>
+          <div className="lens-marquee-track" style={{ "--marquee-duration": `${Math.max(displayBrands.length, 1) * 3.2}s` }}>
+            {[...displayBrands, ...displayBrands].map((b, i) => (
+              <span key={`${b.id}-${i}`} onClick={() => setPage("catalogue")} className="cursor-pointer" style={{ color: alpha(p.text, 0.82) }}>{b.name}</span>
             ))}
           </div>
-          {visible && isDesktop && (
-            <>
-              <div ref={maskElRef} className="lens-row lens-row-masked pointer-events-none">
-                {displayBrands.map((b) => <span key={b.id}>{b.name}</span>)}
-              </div>
-              <div ref={glyphElRef} className="lens-glyph-travel" style={{ left: 0, top: "50%", transform: "translate(-100px,-50%)" }}>
-                <GlassesGlyph shape="square" tint={NEON.cyan} stroke="rgba(255,255,255,0.9)" />
-              </div>
-            </>
-          )}
         </div>
-      </div>
+      )}
       <div className="hairline" style={{ background: `linear-gradient(to right, transparent, ${p.border}, transparent)` }} />
     </section>
   );
