@@ -1329,7 +1329,7 @@ function ScrollGlassesStory({ featured }) {
   const stepOpacity = (inS, inE, outS, outE) => Math.min(smoothstep(inS, inE, progress), 1 - smoothstep(outS, outE, progress));
   const s1 = stepOpacity(0.06, 0.18, 0.30, 0.40);
   const s2 = stepOpacity(0.38, 0.48, 0.60, 0.70);
-  const s3 = stepOpacity(0.66, 0.76, 0.92, 0.99);
+  const s3 = stepOpacity(0.66, 0.76, 0.96, 1.0);
 
   const StepCard = ({ n, title, text, style, opacity }) => (
     <div className="hidden md:block" style={{ position: "absolute", maxWidth: 400, opacity, transform: `translateY(${(1 - opacity) * 22}px)`, transition: "opacity .1s linear", ...style }}>
@@ -1358,7 +1358,7 @@ function ScrollGlassesStory({ featured }) {
   );
 
   return (
-    <section ref={sectionRef} style={{ height: "320svh", position: "relative", background: "transparent" }}>
+    <section ref={sectionRef} style={{ height: "230svh", position: "relative", background: "transparent" }}>
       {/* "svh" (small viewport height) instead of "vh" — on mobile Safari/Chrome, "100vh" includes
          the space the address bar takes up when it's collapsed, so the pinned box's real height
          keeps jumping as the bar shows/hides while scrolling, opening up the gaps of blank space
@@ -1588,7 +1588,7 @@ function LensRevealBrands({ brands, setPage }) {
         // plus haut), demandé par retour utilisateur ("ce bandeau est fixe"). La liste est dupliquée
         // pour boucler sans coupure ; durée proportionnelle au nombre de marques pour garder une
         // vitesse de défilement constante quel que soit le nombre de marques tirées au sort.
-        <div className="lens-marquee-viewport max-w-6xl mx-auto" style={{ height: 60 }}>
+        <div className="lens-marquee-viewport max-w-6xl mx-auto py-8">
           <div className="lens-marquee-track" style={{ "--marquee-duration": `${Math.max(displayBrands.length, 1) * 3.2}s` }}>
             {[...displayBrands, ...displayBrands].map((b, i) => (
               <span key={`${b.id}-${i}`} onClick={() => setPage("catalogue")} className="cursor-pointer" style={{ color: alpha(p.text, 0.82) }}>{b.name}</span>
