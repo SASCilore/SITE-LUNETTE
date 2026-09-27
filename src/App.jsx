@@ -123,8 +123,8 @@ const pageGradient = (dark) => {
     `${c(NEON.pink)} 50%, ` +
     `${c(NEON.orange, 1.5)} 62%, ` +
     `${c(NEON.yellow, 2.1)} 75%, ` +
-    `${c(NEON.cyan)} 88%, ` +
-    `${c(NEON.blue)} 100%` +
+    `${c(NEON.pink)} 88%, ` +
+    `${c(NEON.yellow, 2.1)} 100%` +
     `), ${dark ? "#07080A" : "#FAFAF8"}`
   );
 };
